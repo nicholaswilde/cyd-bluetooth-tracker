@@ -300,6 +300,34 @@ void BluetoothTracker::getRssiHistory(int8_t* outHistory, size_t count) const {
     }
 }
 
+float BluetoothTracker::getRssiSlope() const {
+    if (_historyCount < 2) return 0.0f;
+
+    // Least-squares slope over chronological samples (x = 0..n-1), in dB per sample.
+    const float n = (float)_historyCount;
+    float sumX = 0.0f, sumY = 0.0f, sumXY = 0.0f, sumXX = 0.0f;
+    for (size_t i = 0; i < _historyCount; ++i) {
+        size_t idx = (_historyIndex + HISTORY_SIZE - _historyCount + i) % HISTORY_SIZE;
+        const float x = (float)i;
+        const float y = (float)_rssiHistory[idx];
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumXX += x * x;
+    }
+    const float denom = n * sumXX - sumX * sumX;
+    if (denom == 0.0f) return 0.0f;
+    return (n * sumXY - sumX * sumY) / denom;
+}
+
+ProximityTrend BluetoothTracker::getTrend() const {
+    if (_historyCount < RSSI_TREND_MIN_SAMPLES) return TREND_STABLE;
+    const float slope = getRssiSlope();
+    if (slope >= RSSI_TREND_SLOPE_THRESHOLD) return TREND_CLOSING;
+    if (slope <= -RSSI_TREND_SLOPE_THRESHOLD) return TREND_DRIFTING;
+    return TREND_STABLE;
+}
+
 void BluetoothTracker::addOrUpdateDevice(const BleDevice& dev) {
     processFoundDevice(dev.mac, dev.name, dev.rssi, dev.txPower,
                        dev.manufacturerId, dev.manufacturerDataHex,

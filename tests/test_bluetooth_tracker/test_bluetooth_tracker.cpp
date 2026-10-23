@@ -217,6 +217,60 @@ void test_tracker_scan_interval_and_window(void) {
     TEST_ASSERT_EQUAL_UINT32(2700, bleTracker.getScanWindow());
 }
 
+// Regression tests for issue #4: proximity trend indicator
+static void trackWithRssiSequence(const int8_t* seq, size_t n) {
+    BleDevice d;
+    d.mac = "AA:BB:CC:44:44:44";
+    d.name = "TrendTarget";
+    d.rssi = seq[0];
+    d.lastSeen = 500;
+    bleTracker.addOrUpdateDevice(d);
+    bleTracker.setTrackedTarget(d.mac);  // seeds history with seq[0]
+    for (size_t i = 1; i < n; ++i) {
+        d.rssi = seq[i];
+        bleTracker.addOrUpdateDevice(d);
+    }
+}
+
+void test_tracker_trend_insufficient_samples_is_stable(void) {
+    const int8_t seq[] = {-90, -60};
+    trackWithRssiSequence(seq, 2);
+    TEST_ASSERT_EQUAL(TREND_STABLE, bleTracker.getTrend());
+    bleTracker.clearTrackedTarget();
+    TEST_ASSERT_EQUAL(TREND_STABLE, bleTracker.getTrend());
+}
+
+void test_tracker_trend_closing_in(void) {
+    const int8_t seq[] = {-80, -75, -70, -64, -60, -55};
+    trackWithRssiSequence(seq, 6);
+    TEST_ASSERT_TRUE(bleTracker.getRssiSlope() >= RSSI_TREND_SLOPE_THRESHOLD);
+    TEST_ASSERT_EQUAL(TREND_CLOSING, bleTracker.getTrend());
+    bleTracker.clearTrackedTarget();
+}
+
+void test_tracker_trend_drifting(void) {
+    const int8_t seq[] = {-50, -56, -61, -67, -72, -78};
+    trackWithRssiSequence(seq, 6);
+    TEST_ASSERT_TRUE(bleTracker.getRssiSlope() <= -RSSI_TREND_SLOPE_THRESHOLD);
+    TEST_ASSERT_EQUAL(TREND_DRIFTING, bleTracker.getTrend());
+    bleTracker.clearTrackedTarget();
+}
+
+void test_tracker_trend_stable_with_noise(void) {
+    const int8_t seq[] = {-65, -66, -64, -65, -66, -65};
+    trackWithRssiSequence(seq, 6);
+    TEST_ASSERT_EQUAL(TREND_STABLE, bleTracker.getTrend());
+    bleTracker.clearTrackedTarget();
+}
+
+void test_tracker_trend_after_history_wraps(void) {
+    // 12 samples > HISTORY_SIZE (8): only the most recent 8 (improving) count
+    const int8_t seq[] = {-40, -45, -50, -55, -90, -85, -80, -75, -70, -65, -60, -55};
+    trackWithRssiSequence(seq, 12);
+    TEST_ASSERT_EQUAL(TREND_CLOSING, bleTracker.getTrend());
+    bleTracker.clearTrackedTarget();
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tracker_add_and_get_devices);
@@ -226,5 +280,10 @@ int main(void) {
     RUN_TEST(test_tracker_catalog_versioning);
     RUN_TEST(test_tracker_pruning_version_increment);
     RUN_TEST(test_tracker_scan_interval_and_window);
+    RUN_TEST(test_tracker_trend_insufficient_samples_is_stable);
+    RUN_TEST(test_tracker_trend_closing_in);
+    RUN_TEST(test_tracker_trend_drifting);
+    RUN_TEST(test_tracker_trend_stable_with_noise);
+    RUN_TEST(test_tracker_trend_after_history_wraps);
     return UNITY_END();
 }

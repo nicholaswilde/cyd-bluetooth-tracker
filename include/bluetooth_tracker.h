@@ -16,6 +16,12 @@ enum BleDeviceType {
     DEVICE_TYPE_IBEACON
 };
 
+enum ProximityTrend {
+    TREND_STABLE,
+    TREND_CLOSING,   // RSSI improving: target getting closer
+    TREND_DRIFTING   // RSSI degrading: target moving away
+};
+
 struct BleDevice {
     std::string mac;
     std::string name;
@@ -65,6 +71,8 @@ public:
     // Proximity metrics
     int8_t getSmoothedRssi() const;
     void getRssiHistory(int8_t* outHistory, size_t count) const;
+    float getRssiSlope() const;
+    ProximityTrend getTrend() const;
     size_t getDiscoveredCount() const { return _devices.size(); }
     bool isScanning() const { return _isScanning; }
 

@@ -39,6 +39,12 @@
 #define RSSI_ZONE_MID -80
 #define RSSI_ZONE_FAR -95
 
+// Proximity Trend Detection
+// Least-squares RSSI slope (dB per sample) beyond which the signal is considered
+// improving/degrading; smaller values are treated as noise (STABLE).
+#define RSSI_TREND_SLOPE_THRESHOLD 1.0f
+#define RSSI_TREND_MIN_SAMPLES 3
+
 // Device Catalog Sort & Filter Defaults
 #define DEFAULT_DEVICE_SORT_MODE 0    // 0: RSSI (Strongest), 1: Name (A-Z), 2: Last Seen
 #define DEFAULT_DEVICE_FILTER_MODE 0  // 0: All, 1: Named Only, 2: Pinned Only

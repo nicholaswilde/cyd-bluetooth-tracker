@@ -1021,6 +1021,22 @@ void updateUI() {
         }
         lv_chart_refresh(s_tracker_chart);
 
+        // Update proximity trend indicator
+        switch (bleTracker.getTrend()) {
+            case TREND_CLOSING:
+                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_UP " CLOSING IN");
+                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.green), LV_PART_MAIN);
+                break;
+            case TREND_DRIFTING:
+                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_DOWN " DRIFTING");
+                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.red), LV_PART_MAIN);
+                break;
+            default:
+                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " STABLE");
+                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
+                break;
+        }
+
         // Update audio beeper
         audio.setTargetRssi(rssi);
     } else {
@@ -1031,6 +1047,8 @@ void updateUI() {
         lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, -6, -8);
         lv_label_set_text(s_tracker_lbl_proximity, "STANDBY");
         lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, -6, 14);
+        lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " STABLE");
+        lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
         audio.clearTarget();
     }
 
