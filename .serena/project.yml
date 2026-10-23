@@ -37,6 +37,8 @@ project_name: "cyd-bluetooth-tracker"
 # Note that when using the JetBrains backend, language servers are not used and this list is correspondingly ignored.
 language_servers:
 - bash
+- cpp
+- python
 
 # the encoding used by text files in the project
 # For a list of possible encodings, see https://docs.python.org/3.11/library/codecs.html#standard-encodings
@@ -53,7 +55,7 @@ activation_command:
 
 # maximum time in seconds to wait for activation_command to complete before killing it (default 180s).
 # must be a positive number.
-activation_command_timeout: 180
+activation_command_timeout: 180.0
 
 # line ending convention to use when writing source files.
 # Possible values: unset (use global setting), "lf", "crlf", or "native" (platform default)
@@ -85,7 +87,8 @@ ls_specific_settings: {}
 #   ls_workspace_folders:
 #     - "./subproject1"
 #     - "./subproject2"
-ls_workspace_folders: ["."]
+ls_workspace_folders:
+- "."
 
 # list of additional workspace folder paths for cross-package reference support.
 # Paths can be absolute or relative to the project root.
