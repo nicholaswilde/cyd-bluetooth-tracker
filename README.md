@@ -1,1 +1,283 @@
-# CYD Bluetooth Tracker
+# :signal_strength: CYD Bluetooth Tracker :pager:
+[![Coveralls](https://img.shields.io/badge/dynamic/xml?url=https%3A%2F%2Fcoveralls.io%2Frepos%2Fgithub%2Fnicholaswilde%2Fcyd-bluetooth-tracker%2Fbadge.svg%3Fbranch%3Dmain&query=%2F%2F*%5Blocal-name()%3D'text'%5D%5Blast()%5D&label=Coveralls&style=for-the-badge&logo=coveralls)](https://coveralls.io/github/nicholaswilde/cyd-bluetooth-tracker?branch=main)
+[![task](https://img.shields.io/badge/Task-Enabled-brightgreen?style=for-the-badge&logo=task&logoColor=white)](https://taskfile.dev/#/)
+[![test](https://img.shields.io/github/actions/workflow/status/nicholaswilde/cyd-bluetooth-tracker/test.yaml?label=test&style=for-the-badge&branch=main&logo=github-actions)](https://github.com/nicholaswilde/cyd-bluetooth-tracker/actions/workflows/test.yaml)
+[![ci](https://img.shields.io/github/actions/workflow/status/nicholaswilde/cyd-bluetooth-tracker/ci.yaml?label=ci&style=for-the-badge&logo=github-actions)](https://github.com/nicholaswilde/cyd-bluetooth-tracker/actions/workflows/ci.yaml)
+
+An interactive, touch-screen-enabled Bluetooth Low Energy (BLE) tracker and device locator designed for the **ESP32 Cheap Yellow Display (CYD)** hardware family. Powered by **LVGL v8** and styled with the **Catppuccin** color system.
+
+> [!WARNING]
+> This project is currently in an active `v0.X.X` development stage. Features, interfaces, and configurations are subject to continuous improvement.
+
+---
+
+## :star: Features
+
+- **Real-Time Proximity Tracker ("Hot or Cold" Mode)**:
+  - Dedicated tracking view for locating a selected BLE target device.
+  - Real-time RSSI signal strength meter and arc gauge with Catppuccin color-coded proximity zones:
+    - **Immediate** ($> -45\text{ dBm}$): Bright Green / Pink accent.
+    - **Close** ($-45\text{ to } -65\text{ dBm}$): Mint Green.
+    - **Mid-Range** ($-65\text{ to } -80\text{ dBm}$): Peach / Yellow.
+    - **Far / Weak** ($< -80\text{ dBm}$): Lavender / Blue.
+  - Rolling 8-sample RSSI history chart showing approaching vs. moving away signal trends.
+  - Audio Geiger counter with variable pitch and beep cadence accelerating on the onboard speaker/buzzer (GPIO 26) as signal peaks.
+  - Active RGB LED proximity cues (pulsing red $\rightarrow$ yellow $\rightarrow$ solid green as distance closes).
+
+- **BLE Device Catalog & Scanner**:
+  - Continuous non-blocking BLE scanning.
+  - Live list of nearby Bluetooth Low Energy devices with device name, MAC address, RSSI (dBm), manufacturer/tag type (Apple AirTag / FindMy, Tile, Samsung SmartTag, iBeacon, Google Fast Pair, generic BLE), and last seen time.
+  - Sorting by RSSI (closest first) and filtering by minimum signal strength threshold.
+
+- **Device Detail Modal & Inspector**:
+  - Deep-dive pop-up inspector displaying raw advertisement packets, manufacturer data, service UUIDs, TX power, estimated distance, and one-tap "Track Target" or "Pin / Favorite".
+
+- **Pinned / Favorite Devices**:
+  - Save target beacons (keys, backpack, headphones, tags) to NVS via `SettingsManager` to track them instantly on reboot.
+
+- **Catppuccin RGB565 Theming**:
+  - Full runtime switching across 4 Catppuccin flavors: **Mocha**, **Macchiato**, **Frappé**, and **Latte**.
+  - All tabs, widgets, modals, charts, and gauges redraw seamlessly in the active palette.
+
+- **Onboard Active-Low RGB Status LED**:
+  - Physical visual feedback using the onboard RGB LED (GPIO 4/16/17 on 2.8", GPIO 4/17/16 on 3.5").
+  - Status cues:
+    - **Blue pulse/blink**: BLE scan currently in progress.
+    - **Tracker mode**: Green when near, Yellow when moderate, Red when distant.
+  - Settings controls to toggle the LED on/off and adjust LED brightness with gamma 2.2 scaling.
+
+- **LDR Ambient Light Auto-Dimming**:
+  - Automatic backlight brightness adjustment driven by the onboard LDR photoresistor (GPIO 34).
+  - Exponential Moving Average (EMA) light filtering with natural $\gamma = 2.2$ gamma-corrected PWM fading via `BacklightManager`.
+
+- **Persistent Configuration via NVS (SettingsManager)**:
+  - Backed by ESP32 `Preferences` non-volatile storage.
+  - Remembers theme flavor, backlight brightness, auto-dimming toggle, scan window/interval, audio toggle & volume, LED toggle & brightness, screen orientation, and pinned target across reboots.
+  - One-touch factory defaults restoration button.
+
+---
+
+## :hammer_and_wrench: Hardware Requirements
+
+- **ESP32 Cheap Yellow Display (CYD)**:
+  - **CYD 2.8" (Resistive)**: `ESP32-2432S028R` — 2.8″ 320×240 ILI9341 LCD with XPT2046 resistive touch (`cyd_28r` / `cyd_28r_inv`).
+  - **CYD 2.8" (Capacitive)**: `ESP32-JC2432W328C` — 2.8″ 320×240 ST7789 LCD with CST816 capacitive touch (`cyd_28c` / `cyd_28c_inv`).
+  - **CYD 2.8" NodeMiner / Rockbase (Resistive)**: `ESP32-2432S028` ("NM") — 2.8″ 320×240 ST7789 LCD with XPT2046 resistive touch (`cyd_28_nm` / `cyd_28_nm_inv`).
+  - **CYD 3.5" (Capacitive)**: `ESP32-3248S035C` — 3.5″ 480×320 ST7796 LCD with GT911/CST820 capacitive touch (`cyd_35c` / `cyd_35c_inv`).
+  - See [docs/hardware-variants.md](docs/hardware-variants.md) for detailed controller variations, noise band fixes, and build configurations.
+- **Onboard Peripherals**:
+  - **MicroSD Card Slot**: Standard FAT32 SPI interface (VSPI: CS=GPIO 5, SCK=GPIO 18, MISO=GPIO 19, MOSI=GPIO 23).
+  - **BOOT Button**: Tactile user push button on GPIO 0.
+  - **RGB Status LED**: Active-low LED on GPIO 4 (Red), 16 (Green), 17 (Blue) on 2.8" boards; GPIO 4 (Red), 17 (Green), 16 (Blue) on 3.5" boards.
+  - **Ambient Light Sensor (LDR)**: Photoresistor on GPIO 34.
+  - **Backlight Control**: PWM on GPIO 21 (or GPIO 27 on capacitive boards).
+  - **Speaker / Buzzer**: Hardwired to GPIO 26 (`DAC_CHANNEL_2` or LEDC tone).
+- **Power & Programming**: Micro-USB or USB-C cable capable of supplying $\ge 500\text{ mA}$.
+
+---
+
+## :camera: Screenshots
+
+### Device UI Showcase
+
+| Screen | Landscape (320x240) |
+|---|---|
+| **Target Proximity Tracker** | ![Landscape Tracker](screenshots/tracker.png) |
+| **BLE Device Catalog** | ![Landscape Devices](screenshots/devices.png) |
+| **Device Inspector Modal** | ![Landscape Modal](screenshots/modal.png) |
+| **System Settings** | ![Landscape Settings](screenshots/settings.png) |
+
+The device supports capturing the current screen as a standard 24-bit BMP image via two methods:
+- **Physical BOOT button**: Press and hold the **BOOT button** (GPIO 0) on the CYD board for 2 seconds to save a timestamped BMP directly to an inserted FAT32 microSD card (e.g. `/screenshot_YYYYMMDD_HHMMSS.bmp`). A single quick press of the BOOT button triggers an immediate BLE rescan.
+- **USB Serial Screenshot Tool**: Capture real-time screenshots directly over the USB serial connection using the `task screenshot` command.
+
+---
+
+## :rocket: Getting Started
+
+### 1. Quick Install (Pre-compiled Binaries)
+
+**Option A: Web Flasher (Easiest)**
+You can easily flash the pre-compiled firmware directly from your browser using the [ESP32 Web Flasher](https://nicholaswilde.io/esp32-web-flasher/). This requires a Web Serial compatible browser (like Chrome or Edge).
+
+**Option B: Terminal Flash Script**
+Alternatively, you can flash the device directly from your terminal using the provided flash script. Replace `/dev/ttyUSB0` with your actual serial port. By default, it flashes the `cyd_28r` version, but you can specify the target device as the first argument:
+
+```bash
+# Flash the default cyd_28r (2.8" resistive ILI9341 320x240 screen)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28r /dev/ttyUSB0
+
+# Or flash the cyd_28c version (2.8" capacitive ST7789 320x240 screen)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28c /dev/ttyUSB0
+
+# Or flash the cyd_28_nm version (2.8" NodeMiner ST7789 320x240 screen)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28_nm /dev/ttyUSB0
+
+# Or flash the cyd_35c version (3.5" capacitive ST7796 480x320 screen)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_35c /dev/ttyUSB0
+```
+
+> [!WARNING]
+> Running a script directly from the internet with `bash -c "$(curl...)"` is a potential security risk. Always review the script's source code before executing it to ensure it is safe. You can view the script [here](https://github.com/nicholaswilde/cyd-bluetooth-tracker/blob/main/scripts/flash.sh).
+
+### 2. Build and Flash from Source
+
+This project uses [PlatformIO](https://platformio.org/) and [Task](https://taskfile.dev/):
+
+```bash
+# Clone the repository
+git clone https://github.com/nicholaswilde/cyd-bluetooth-tracker.git
+cd cyd-bluetooth-tracker
+
+# Initialize local environment (.env)
+task init
+
+# Build firmware for the configured board (defaults to cyd_28r via PIO_ENV in .env)
+task build
+
+# Or build explicitly for a specific board environment
+task build:cyd_28r          # 2.8" Resistive Touch (ILI9341)
+task build:cyd_28r_inv      # 2.8" Resistive Touch Inverted
+task build:cyd_28c          # 2.8" Capacitive Touch (JC2432W328C)
+task build:cyd_28c_inv      # 2.8" Capacitive Touch Inverted
+task build:cyd_28_nm        # 2.8" Resistive Touch NodeMiner (ST7789)
+task build:cyd_28_nm_inv    # 2.8" Resistive Touch NodeMiner Inverted
+task build:cyd_35c          # 3.5" Capacitive Touch (ESP32-3248S035C)
+task build:cyd_35c_inv      # 3.5" Capacitive Touch Inverted
+
+# Upload firmware to your connected CYD board
+task upload
+
+# Open the serial monitor (115200 baud)
+task monitor
+```
+
+### 3. Capture Real-Time Screenshots over USB Serial
+
+Capture pixel-perfect screenshots of the display over the USB serial connection at any time:
+
+```bash
+# Capture the currently displayed screen
+task screenshot
+
+# Or switch to a specific tab before capturing (0=Tracker, 1=Devices, 2=Details, 3=Settings)
+task screenshot -- -t 0
+
+# Or capture all 4 application screens automatically in sequence
+task screenshot -- --all
+```
+
+Captured images are saved in `screenshots/` with a timestamped filename (e.g. `screenshots/screenshot_YYYYMMDD_HHMMSS.png`) and automatically update `screenshots/latest.png` for rapid inspection.
+
+### 4. Run Host-Native Unit Tests & Coverage
+
+Unit tests execute natively on host systems (Linux/macOS) with mocked hardware interfaces:
+
+```bash
+# Run all host-native unit tests
+task test
+
+# Generate and display terminal code coverage report
+task coverage:report
+
+# Upload coverage to Coveralls.io (requires COVERALLS_REPO_TOKEN in .env)
+task coverage:upload
+```
+
+---
+
+## :gear: Settings Tab Reference
+
+The **Settings Tab** on the device provides touch controls for all runtime parameters:
+
+| Setting | Control | Options / Range | Default | Description |
+|---|---|---|---|---|
+| **Theme Flavor** | Dropdown | `Mocha`, `Macchiato`, `Frappe`, `Latte` | `Mocha` | Changes the active Catppuccin color palette across the entire UI. |
+| **Brightness** | Slider | `10%` to `100%` | `100%` | Sets manual TFT display backlight brightness with gamma 2.2 correction. |
+| **Auto Bright** | Toggle Switch | `ON` / `OFF` | `OFF` | Enables dynamic ambient light backlight adaptation via the onboard LDR sensor. |
+| **Scan Interval** | Dropdown | `1s`, `2s`, `3s`, `5s`, `Continuous` | `2s` | Configures BLE scan sweep interval and duty cycle. |
+| **Min RSSI** | Slider | `-95 dBm` to `-50 dBm` | `-90 dBm` | Filters out weak or distant BLE advertisements from catalog. |
+| **Audio Geiger** | Toggle Switch | `ON` / `OFF` | `ON` | Enables audio proximity beeping proportional to signal strength. |
+| **Audio Volume** | Slider | `10%` to `100%` | `80%` | Adjusts audio output level on the onboard buzzer / speaker. |
+| **Status LED** | Toggle Switch | `ON` / `OFF` | `ON` | Enables or disables physical RGB status LED indications. |
+| **LED Brightness** | Slider | `10` to `255` | `255` | Sets the maximum brightness of the RGB status LED. |
+| **Orientation** | Dropdown | `Landscape (0°)`, `Landscape (180°)` | `Landscape (0°)` | Rotates screen orientation by 180° for upside-down mounting. |
+| **Reset Defaults** | Push Button | Tap to execute | — | Clears NVS preferences and restores safe factory configuration. |
+
+---
+
+## :computer: Development
+
+This project is built with **PlatformIO** and supports ESP32 hardware compilation, static code analysis, and native desktop mock testing via a Unity test suite.
+
+### Command Reference
+
+| Action | Task Command | PlatformIO / CLI Equivalent | Description |
+| :--- | :--- | :--- | :--- |
+| **Initialize** | `task init` | `cp .env.example .env` | Initializes local environment file from template. |
+| **Build** | `task build` | `pio run -e $PIO_ENV` | Compiles firmware for configured `PIO_ENV`. |
+| **Upload** | `task upload` | `pio run -e $PIO_ENV --target upload` | Flashes firmware to connected board. |
+| **Monitor** | `task monitor` | `pio device monitor` | Opens serial monitor (115200 baud). |
+| **Erase** | `task erase` | `pio run -e $PIO_ENV -t erase` | Erases flash on connected board. |
+| **Erase & Upload** | `task eau` | `pio run -e $PIO_ENV -t erase -t upload` | Erases flash and flashes firmware. |
+| **Upload & Monitor** | `task uam` | `pio run -e $PIO_ENV -t upload -t monitor` | Flashes firmware and opens serial monitor. |
+| **Package Binaries** | `task package` | `bash .agents/skills/package-binaries/package_binaries.sh` | Builds and packages firmware ZIP archives. |
+| **Lint Design** | `task lint:design` | `npx @google/design.md lint .agents/design.md` | Validates design tokens against DESIGN.md. |
+| **Screenshot** | `task screenshot` | `uv run python scripts/capture-serial-screenshot.py` | Captures display screenshot over serial. |
+| **Unit Tests** | `task test` | `pio test -e native` | Runs host-native unit test suite. |
+| **Coverage Report** | `task coverage:report` | `lcov --capture ...` | Displays terminal code coverage breakdown. |
+| **Upload Coverage** | `task coverage:upload` | `coveralls report ...` | Uploads LCOV coverage to Coveralls.io. |
+| **Static Analysis** | `task check` | `pio check -e $PIO_ENV` | Runs `cppcheck` static code analysis. |
+| **Clean** | `task clean` | `pio run -t clean` | Cleans PlatformIO build artifacts. |
+
+### Release Workflow
+
+The project includes automated versioning and release packaging skills:
+- **`./scripts/release.sh`**: Runs pre-release validations (`task check`, `task test`), bumps `version.txt`, tags release, and atomic pushes to remote to trigger GitHub Actions release builds.
+- **`./scripts/release_summary.py`**: Retrieves git commit history, groups conventional commits (`Features`, `Bug Fixes`, `Improvements`, `Documentation`, `Special Thanks`), and updates existing GitHub draft releases in-place.
+
+---
+
+## :wrench: Troubleshooting
+
+If you encounter issues with your display, touch, or software, review the solutions below or [create an issue](https://github.com/nicholaswilde/cyd-bluetooth-tracker/issues) on GitHub.
+
+### BLE Signal Fluctuation & RSSI Physics
+2.4 GHz RF signals are naturally susceptible to reflection, multipath interference, and physical obstruction (walls, human bodies, metal enclosures).
+- **Proximity Trends**: Do not rely on single instantaneous RSSI samples; refer to the rolling 8-sample sparkline and average trend on the Tracker dashboard.
+- **Antenna Directionality**: The onboard CYD PCB trace antenna has directional lobes. Rotating the CYD device slowly can help determine the general direction of maximum signal strength.
+
+### Inverted Colors
+If colors appear inverted (e.g. dark themes like `Mocha` show bright white backgrounds), your display batch uses inverted panel logic. Flash the corresponding `_inv` environment:
+- `cyd_28r_inv`, `cyd_28c_inv`, `cyd_28_nm_inv`, or `cyd_35c_inv`
+- Or append `-D TFT_INVERSION_ON=1` to your build flags.
+
+### Garbled or Scrambled Screen
+If the UI is scrambled or distorted, ensure the firmware environment matches your board's display controller and resolution:
+- **2.8" Resistive (ILI9341)**: `cyd_28r` / `cyd_28r_inv` (320x240 landscape)
+- **2.8" Capacitive (JC2432W328C)**: `cyd_28c` / `cyd_28c_inv` (320x240 landscape)
+- **2.8" NodeMiner / ST7789 (`ESP32-2432S028`)**: `cyd_28_nm` / `cyd_28_nm_inv` (320x240 landscape)
+- **3.5" Capacitive (ST7796)**: `cyd_35c` / `cyd_35c_inv` (480x320 landscape)
+
+### Partial Screen Rendering / 80px Noise Band
+If the display renders across 240 columns and the remaining 80 columns show uninitialized static noise, your board uses an **ST7789** controller. Use the `cyd_28_nm` or `cyd_28_nm_inv` environments in `platformio.ini`. See the detailed guide in [docs/hardware-variants.md](docs/hardware-variants.md) for background and configurations.
+
+### Flashing & Bootloader Mode
+- If flashing manually via serial (`esptool.py`), the ESP32 might remain in bootloader mode after writing. Press the physical **RESET / EN** button (or power cycle) to boot into the application.
+- Wiping flash via `pio run -t erase` will restore all NVS settings to factory defaults.
+
+### Touch Accuracy (Resistive Screens)
+The 2.8" resistive variant (`cyd_28r`) uses an XPT2046 resistive touch controller. Ensure touches are made firmly with a stylus or fingernail. Capacitive variants (`cyd_28c`, `cyd_35c`) use true capacitive touch and do not require pressure.
+
+### Power Delivery & Stability
+BLE radio scanning active bursts can require $\sim 250\text{--}350\text{ mA}$ on the 3.3V rail. Intermittent reboots or brownouts indicate inadequate power from low-quality USB ports or unpowered hubs. Ensure you are using a quality USB power supply and cable capable of supplying steady current.
+
+---
+
+## :balance_scale: License
+
+[Apache License 2.0](LICENSE)
+
+## :writing_hand: Author
+
+This project was created in 2026 by [Nicholas Wilde](https://github.com/nicholaswilde/).
