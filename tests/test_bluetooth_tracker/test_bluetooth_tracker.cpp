@@ -190,6 +190,33 @@ void test_tracker_pruning_version_increment(void) {
     TEST_ASSERT_EQUAL(0, bleTracker.getDiscoveredCount());
 }
 
+void test_tracker_scan_interval_and_window(void) {
+    // Default interval should match DEFAULT_SCAN_INTERVAL_MS (2000ms)
+    TEST_ASSERT_EQUAL_UINT32(DEFAULT_SCAN_INTERVAL_MS, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_UINT32(DEFAULT_SCAN_INTERVAL_MS * 9 / 10, bleTracker.getScanWindow());
+
+    // Setting 1000ms -> 900ms window
+    bleTracker.setScanInterval(1000);
+    TEST_ASSERT_EQUAL_UINT32(1000, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_UINT32(900, bleTracker.getScanWindow());
+
+    // Setting 5000ms -> 4500ms window
+    bleTracker.setScanInterval(5000);
+    TEST_ASSERT_EQUAL_UINT32(5000, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_UINT32(4500, bleTracker.getScanWindow());
+
+    // Clamping lower bound (< 100ms clamps to 100ms)
+    bleTracker.setScanInterval(50);
+    TEST_ASSERT_EQUAL_UINT32(100, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_UINT32(99, bleTracker.getScanWindow());
+
+    // begin() adopts settings.getScanIntervalMs()
+    settings.setScanIntervalMs(3000);
+    bleTracker.begin();
+    TEST_ASSERT_EQUAL_UINT32(3000, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_UINT32(2700, bleTracker.getScanWindow());
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tracker_add_and_get_devices);
@@ -198,5 +225,6 @@ int main(void) {
     RUN_TEST(test_tracker_target_tracking_and_history);
     RUN_TEST(test_tracker_catalog_versioning);
     RUN_TEST(test_tracker_pruning_version_increment);
+    RUN_TEST(test_tracker_scan_interval_and_window);
     return UNITY_END();
 }

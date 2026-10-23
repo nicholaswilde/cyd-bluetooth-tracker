@@ -55,26 +55,55 @@ BluetoothTracker::BluetoothTracker()
       _lastPruneTime(0),
       _historyIndex(0),
       _historyCount(0),
-      _catalogVersion(0) {
+      _catalogVersion(0),
+      _scanIntervalMs(DEFAULT_SCAN_INTERVAL_MS),
+      _scanWindowMs(DEFAULT_SCAN_INTERVAL_MS * 9 / 10) {
     for (size_t i = 0; i < HISTORY_SIZE; ++i) {
         _rssiHistory[i] = RSSI_FLOOR;
     }
 }
 
 void BluetoothTracker::begin() {
+    uint32_t interval = settings.getScanIntervalMs();
+    if (interval == 0) interval = DEFAULT_SCAN_INTERVAL_MS;
+
 #ifndef NATIVE_TEST
     NimBLEDevice::init("CYD-BLE-Tracker");
     NimBLEScan* pScan = NimBLEDevice::getScan();
     pScan->setAdvertisedDeviceCallbacks(&scanCallbacks, true);
     pScan->setActiveScan(true);
-    pScan->setInterval(100);
-    pScan->setWindow(99);
 #endif
+
+    setScanInterval(interval);
+
     // Restore pinned target from settings if present
     std::string pinned = settings.getPinnedMac();
     if (!pinned.empty()) {
         _trackedMac = pinned;
     }
+}
+
+void BluetoothTracker::setScanInterval(uint32_t intervalMs) {
+    if (intervalMs < 100) intervalMs = 100;
+    _scanIntervalMs = intervalMs;
+    _scanWindowMs = (intervalMs <= 200) ? (intervalMs - 1) : (intervalMs * 9 / 10);
+
+#ifndef NATIVE_TEST
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan) {
+        bool wasScanning = _isScanning;
+        if (wasScanning) {
+            pScan->stop();
+        }
+        uint16_t itvl = (_scanIntervalMs > 65535) ? 65535 : (uint16_t)_scanIntervalMs;
+        uint16_t win = (_scanWindowMs > 65535) ? 65535 : (uint16_t)_scanWindowMs;
+        pScan->setInterval(itvl);
+        pScan->setWindow(win);
+        if (wasScanning) {
+            pScan->start(0, nullptr, false);
+        }
+    }
+#endif
 }
 
 void BluetoothTracker::triggerScan() {

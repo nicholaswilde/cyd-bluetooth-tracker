@@ -57,6 +57,11 @@ public:
     // Catalog versioning for change detection
     uint32_t getCatalogVersion() const { return _catalogVersion; }
 
+    // Scan interval and window configuration
+    void setScanInterval(uint32_t intervalMs);
+    uint32_t getScanInterval() const { return _scanIntervalMs; }
+    uint32_t getScanWindow() const { return _scanWindowMs; }
+
     // Proximity metrics
     int8_t getSmoothedRssi() const;
     void getRssiHistory(int8_t* outHistory, size_t count) const;
@@ -85,6 +90,8 @@ private:
     unsigned long _lastScanStartTime;
     unsigned long _lastPruneTime;
     uint32_t _catalogVersion;
+    uint32_t _scanIntervalMs;
+    uint32_t _scanWindowMs;
 
     friend class ScanCallbackHandler;
 };

@@ -412,7 +412,9 @@ static void interval_dropdown_event_cb(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
         lv_obj_t* dropdown = lv_event_get_target(e);
         uint16_t opt = lv_dropdown_get_selected(dropdown);
-        settings.setScanIntervalMs(dropdownIdxToScanInterval(opt));
+        uint32_t interval = dropdownIdxToScanInterval(opt);
+        settings.setScanIntervalMs(interval);
+        bleTracker.setScanInterval(interval);
     }
 }
 
@@ -501,6 +503,7 @@ static void reset_btn_event_cb(lv_event_t* e) {
         audio.setEnabled(settings.getAudioGeiger());
         audio.setVolume(settings.getAudioVolume());
         tft.setRotation(settings.getScreenOrientation());
+        bleTracker.setScanInterval(settings.getScanIntervalMs());
 
         if (s_dropdown_theme) {
             lv_dropdown_set_selected(s_dropdown_theme, settings.getThemeFlavor() - 1);
