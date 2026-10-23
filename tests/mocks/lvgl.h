@@ -62,7 +62,12 @@ inline void lv_disp_drv_register(lv_disp_drv_t *) {}
 inline void lv_indev_drv_init(lv_indev_drv_t *) {}
 inline void lv_indev_drv_register(lv_indev_drv_t *) {}
 inline void lv_disp_flush_ready(lv_disp_drv_t *) {}
+inline bool lv_obj_is_scrolling(const void*) { return false; }
+inline int16_t lv_obj_get_scroll_y(const void*) { return 0; }
+inline void lv_obj_scroll_to_y(void*, int16_t, int) {}
 
+#define LV_ANIM_OFF 0
+#define LV_ANIM_ON 1
 #define LV_STATE_DEFAULT 0
 #define LV_STATE_CHECKED 1
 #define LV_INDEV_STATE_PR 1

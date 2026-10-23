@@ -80,6 +80,16 @@ static lv_obj_t* s_modal_btn_close = nullptr;
 // Toast / status banner
 static lv_obj_t* s_toast_msg = nullptr;
 
+static void updateDevicesList(bool force = false);
+
+static void tabview_event_cb(lv_event_t* e) {
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        if (getTab() == 1) {
+            updateDevicesList(true);
+        }
+    }
+}
+
 static void tracker_audio_btn_event_cb(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         bool en = !audio.isEnabled();
@@ -624,6 +634,7 @@ void initUI() {
     s_tab_tracker = lv_tabview_add_tab(s_tabview, "Tracker");
     s_tab_devices = lv_tabview_add_tab(s_tabview, "Devices");
     s_tab_settings = lv_tabview_add_tab(s_tabview, "Settings");
+    lv_obj_add_event_cb(s_tabview, tabview_event_cb, LV_EVENT_VALUE_CHANGED, nullptr);
 
     // ==========================================
     // 1. Tracker Tab
@@ -876,6 +887,85 @@ void initUI() {
     styleSettingsControls(p, flavor);
 }
 
+static std::vector<std::string> s_device_list_macs;
+
+static void updateDevicesList(bool force) {
+    if (!s_list_devices) return;
+
+    // Do not rebuild list if not currently on the Devices tab unless forced
+    if (getTab() != 1 && !force) {
+        return;
+    }
+
+    // Never interrupt user scrolling
+    if (lv_obj_is_scrolling(s_list_devices)) {
+        return;
+    }
+
+    static unsigned long s_lastDeviceListUpdate = 0;
+    static uint32_t s_lastRenderedCatalogVersion = 0;
+    static int s_lastSortMode = -1;
+    static int s_lastFilterMode = -1;
+    static int s_lastMinRssi = -999;
+    unsigned long now = millis();
+
+    bool versionChanged = (bleTracker.getCatalogVersion() != s_lastRenderedCatalogVersion);
+    bool settingsChanged = (settings.getDeviceSortMode() != s_lastSortMode ||
+                            settings.getDeviceFilterMode() != s_lastFilterMode ||
+                            settings.getMinRssi() != s_lastMinRssi);
+    bool timeElapsed = (now - s_lastDeviceListUpdate >= 2000);
+
+    if (!force && !versionChanged && !settingsChanged && !timeElapsed) {
+        return;
+    }
+
+    // Preserve scroll position across redraws
+    lv_coord_t scroll_y = lv_obj_get_scroll_y(s_list_devices);
+
+    lv_obj_clean(s_list_devices);
+
+    s_lastDeviceListUpdate = now;
+    s_lastRenderedCatalogVersion = bleTracker.getCatalogVersion();
+    s_lastSortMode = settings.getDeviceSortMode();
+    s_lastFilterMode = settings.getDeviceFilterMode();
+    s_lastMinRssi = settings.getMinRssi();
+
+    const auto& p = getCatppuccinFlavor(getCurrentThemeFlavor());
+    auto filtered = bleTracker.getFilteredDevices(s_lastSortMode, s_lastFilterMode, s_lastMinRssi);
+
+    s_device_list_macs.clear();
+
+    if (filtered.empty()) {
+        lv_obj_t* btn = lv_list_add_btn(s_list_devices, LV_SYMBOL_WARNING, "No devices match filter");
+        lv_obj_set_style_bg_color(btn, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
+        lv_obj_set_style_text_color(btn, TO_LV_COLOR(p.subtext0), LV_PART_MAIN);
+        lv_obj_set_style_border_color(btn, TO_LV_COLOR(p.surface1), LV_PART_MAIN);
+        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+    } else {
+        s_device_list_macs.reserve(filtered.size());
+        for (const auto& d : filtered) {
+            s_device_list_macs.push_back(d.mac);
+
+            char btnText[64];
+            snprintf(btnText, sizeof(btnText), "%s\n%s (%d dBm)",
+                     d.name.c_str(), d.mac.c_str(), (int)d.rssi);
+
+            const char* icon = LV_SYMBOL_BLUETOOTH;
+            if (d.type == DEVICE_TYPE_APPLE) icon = LV_SYMBOL_EYE_OPEN;
+            else if (d.isPinned) icon = LV_SYMBOL_SAVE;
+
+            lv_obj_t* btn = lv_list_add_btn(s_list_devices, icon, btnText);
+            lv_obj_set_style_bg_color(btn, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
+            lv_obj_set_style_text_color(btn, TO_LV_COLOR(p.text), LV_PART_MAIN);
+            lv_obj_set_style_border_color(btn, TO_LV_COLOR(p.surface1), LV_PART_MAIN);
+            lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+            lv_obj_add_event_cb(btn, device_item_click_cb, LV_EVENT_CLICKED, (void*)s_device_list_macs.back().c_str());
+        }
+    }
+
+    lv_obj_scroll_to_y(s_list_devices, scroll_y, LV_ANIM_OFF);
+}
+
 void updateUI() {
     const auto& p = getCatppuccinFlavor(getCurrentThemeFlavor());
 
@@ -949,29 +1039,7 @@ void updateUI() {
     }
 
     // Update Devices List
-    if (s_list_devices) {
-        lv_obj_clean(s_list_devices);
-        auto filtered = bleTracker.getFilteredDevices(settings.getDeviceSortMode(),
-                                                     settings.getDeviceFilterMode(),
-                                                     settings.getMinRssi());
-
-        for (const auto& d : filtered) {
-            char btnText[64];
-            snprintf(btnText, sizeof(btnText), "%s\n%s (%d dBm)",
-                     d.name.c_str(), d.mac.c_str(), (int)d.rssi);
-
-            const char* icon = LV_SYMBOL_BLUETOOTH;
-            if (d.type == DEVICE_TYPE_APPLE) icon = LV_SYMBOL_EYE_OPEN;
-            else if (d.isPinned) icon = LV_SYMBOL_SAVE;
-
-            lv_obj_t* btn = lv_list_add_btn(s_list_devices, icon, btnText);
-            lv_obj_set_style_bg_color(btn, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
-            lv_obj_set_style_text_color(btn, TO_LV_COLOR(p.text), LV_PART_MAIN);
-            lv_obj_set_style_border_color(btn, TO_LV_COLOR(p.surface1), LV_PART_MAIN);
-            lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
-            lv_obj_add_event_cb(btn, device_item_click_cb, LV_EVENT_CLICKED, (void*)d.mac.c_str());
-        }
-    }
+    updateDevicesList(false);
 }
 
 void refreshThemeUI() {
@@ -1010,6 +1078,9 @@ void refreshThemeUI() {
 void setTab(uint16_t index) {
     if (s_tabview && index < 3) {
         lv_tabview_set_act(s_tabview, index, LV_ANIM_OFF);
+        if (index == 1) {
+            updateDevicesList(true);
+        }
     }
 }
 

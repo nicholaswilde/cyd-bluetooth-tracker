@@ -54,7 +54,8 @@ BluetoothTracker::BluetoothTracker()
       _lastScanStartTime(0),
       _lastPruneTime(0),
       _historyIndex(0),
-      _historyCount(0) {
+      _historyCount(0),
+      _catalogVersion(0) {
     for (size_t i = 0; i < HISTORY_SIZE; ++i) {
         _rssiHistory[i] = RSSI_FLOOR;
     }
@@ -116,14 +117,23 @@ void BluetoothTracker::processFoundDevice(const std::string& mac, const std::str
     for (auto& d : _devices) {
         if (d.mac == mac) {
             d.rssi = rssi;
-            if (!name.empty()) d.name = name;
+            if (!name.empty() && d.name != name) {
+                d.name = name;
+                _catalogVersion++;
+            }
             if (txPower != 0) d.txPower = txPower;
             if (mfgId != 0) d.manufacturerId = mfgId;
             if (!mfgHex.empty()) d.manufacturerDataHex = mfgHex;
             if (!serviceUuid.empty()) d.serviceUuid = serviceUuid;
             d.lastSeen = now;
-            d.type = type;
-            d.isPinned = isPinned;
+            if (d.type != type) {
+                d.type = type;
+                _catalogVersion++;
+            }
+            if (d.isPinned != isPinned) {
+                d.isPinned = isPinned;
+                _catalogVersion++;
+            }
             found = true;
             break;
         }
@@ -142,6 +152,7 @@ void BluetoothTracker::processFoundDevice(const std::string& mac, const std::str
         newDev.isPinned = isPinned;
         newDev.type = type;
         _devices.push_back(newDev);
+        _catalogVersion++;
     }
 
     // If this is the currently tracked target, record in rolling RSSI history
@@ -169,6 +180,7 @@ bool BluetoothTracker::update(unsigned long currentMillis) {
             _devices.end()
         );
         if (_devices.size() != initialCount) {
+            _catalogVersion++;
             stateChanged = true;
         }
     }
@@ -265,7 +277,10 @@ void BluetoothTracker::addOrUpdateDevice(const BleDevice& dev) {
                        dev.serviceUuid, dev.lastSeen);
     for (auto& d : _devices) {
         if (d.mac == dev.mac) {
-            if (dev.isPinned) d.isPinned = true;
+            if (d.isPinned != dev.isPinned) {
+                d.isPinned = dev.isPinned;
+                _catalogVersion++;
+            }
             break;
         }
     }
@@ -274,4 +289,5 @@ void BluetoothTracker::addOrUpdateDevice(const BleDevice& dev) {
 void BluetoothTracker::clearDevices() {
     _devices.clear();
     clearTrackedTarget();
+    _catalogVersion++;
 }

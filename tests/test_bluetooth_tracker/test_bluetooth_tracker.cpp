@@ -130,11 +130,73 @@ void test_tracker_target_tracking_and_history(void) {
     TEST_ASSERT_NULL(bleTracker.getTrackedDevice());
 }
 
+void test_tracker_catalog_versioning(void) {
+    bleTracker.clearDevices();
+    uint32_t baseVer = bleTracker.getCatalogVersion();
+
+    BleDevice d1;
+    d1.mac = "11:22:33:44:55:66";
+    d1.name = "Unknown";
+    d1.rssi = -70;
+    d1.lastSeen = 1000;
+    d1.isPinned = false;
+    bleTracker.addOrUpdateDevice(d1);
+
+    // Initial add increments catalog version
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 1, bleTracker.getCatalogVersion());
+
+    // RSSI update only should NOT increment catalog version
+    d1.rssi = -65;
+    bleTracker.addOrUpdateDevice(d1);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 1, bleTracker.getCatalogVersion());
+
+    // Name update from Unknown to real name increments catalog version
+    d1.name = "AirTag";
+    bleTracker.addOrUpdateDevice(d1);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 2, bleTracker.getCatalogVersion());
+
+    // Pinning device increments catalog version
+    d1.isPinned = true;
+    bleTracker.addOrUpdateDevice(d1);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 3, bleTracker.getCatalogVersion());
+
+    // Clear devices increments catalog version
+    bleTracker.clearDevices();
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 4, bleTracker.getCatalogVersion());
+}
+
+void test_tracker_pruning_version_increment(void) {
+    bleTracker.clearDevices();
+    uint32_t baseVer = bleTracker.getCatalogVersion();
+
+    BleDevice d;
+    d.mac = "22:33:44:55:66:77";
+    d.name = "Ephemeral";
+    d.rssi = -80;
+    d.lastSeen = 1000;
+    d.isPinned = false;
+    bleTracker.addOrUpdateDevice(d);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 1, bleTracker.getCatalogVersion());
+
+    // Before 30s timeout, update() should not prune
+    bool pruned = bleTracker.update(10000);
+    TEST_ASSERT_FALSE(pruned);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 1, bleTracker.getCatalogVersion());
+
+    // After 35s (> 30s timeout), update() should prune and increment version
+    pruned = bleTracker.update(45000);
+    TEST_ASSERT_TRUE(pruned);
+    TEST_ASSERT_EQUAL_UINT32(baseVer + 2, bleTracker.getCatalogVersion());
+    TEST_ASSERT_EQUAL(0, bleTracker.getDiscoveredCount());
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tracker_add_and_get_devices);
     RUN_TEST(test_tracker_distance_estimation);
     RUN_TEST(test_tracker_sorting_and_filtering);
     RUN_TEST(test_tracker_target_tracking_and_history);
+    RUN_TEST(test_tracker_catalog_versioning);
+    RUN_TEST(test_tracker_pruning_version_increment);
     return UNITY_END();
 }
