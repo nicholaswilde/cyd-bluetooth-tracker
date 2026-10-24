@@ -103,7 +103,7 @@ def main():
             sections['feat'].append(entry)
         elif type_str == 'fix':
             sections['fix'].append(entry)
-        elif type_str in ['refactor', 'perf', 'style']:
+        elif type_str in ['refactor', 'perf', 'style', 'test']:
             sections['improve'].append(entry)
         elif type_str == 'docs':
             sections['docs'].append(entry)
