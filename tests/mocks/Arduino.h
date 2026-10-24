@@ -121,6 +121,9 @@ public:
 
 class SerialMock {
 public:
+    std::string rxBuffer;
+    void injectRx(const std::string& data) { rxBuffer += data; }
+    void clearRx() { rxBuffer.clear(); }
     void println(const char* s) { std::cout << s << std::endl; }
     void println(std::string s) { std::cout << s << std::endl; }
     void println(IPAddress ip) { std::cout << ip.toString().c_str() << std::endl; }
@@ -133,8 +136,13 @@ public:
     }
     size_t write(const uint8_t *buffer, size_t size) { return size; }
     size_t write(uint8_t data) { return 1; }
-    int available() { return 0; }
-    int read() { return -1; }
+    int available() { return (int)rxBuffer.size(); }
+    int read() {
+        if (rxBuffer.empty()) return -1;
+        char c = rxBuffer.front();
+        rxBuffer.erase(rxBuffer.begin());
+        return (unsigned char)c;
+    }
     void flush() {}
 };
 

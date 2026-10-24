@@ -190,6 +190,45 @@ void test_ble_device_struct_vendor_integration(void) {
     TEST_ASSERT_EQUAL_STRING("Unknown Vendor", bleTracker.getDevices()[3].getVendor());
 }
 
+void test_oui_vendor_null_and_specialized_types(void) {
+    // Null pointers safety
+    TEST_ASSERT_EQUAL_STRING("Unknown Vendor", getOuiVendor((const uint8_t*)nullptr));
+    TEST_ASSERT_EQUAL_STRING("Unknown Vendor", getOuiVendor((const char*)nullptr));
+
+    // parseMacPrefix edge cases
+    uint32_t prefix = 0;
+    TEST_ASSERT_FALSE(parseMacPrefix(nullptr, &prefix));
+    TEST_ASSERT_FALSE(parseMacPrefix("00:11:22", nullptr));
+    TEST_ASSERT_FALSE(parseMacPrefix("invalid", &prefix));
+    TEST_ASSERT_FALSE(parseMacPrefix("00", &prefix));
+    TEST_ASSERT_TRUE(parseMacPrefix("  24:0A:C4  ", &prefix));
+    TEST_ASSERT_EQUAL_HEX32(0x240AC4, prefix);
+
+    // Unmatched vendor Lookups
+    TEST_ASSERT_EQUAL_STRING("Unknown Vendor", getOuiVendor((uint32_t)0x000000));
+    TEST_ASSERT_EQUAL_STRING("Unknown Vendor", getBtCompanyName((uint16_t)0xFFFF));
+
+    // getDeviceVendor(mfgId, mac)
+    TEST_ASSERT_EQUAL_STRING("Apple", getDeviceVendor(0x004C, "00:00:00:00:00:00"));
+    TEST_ASSERT_EQUAL_STRING("Espressif", getDeviceVendor(0xFFFF, "24:0A:C4:11:22:33"));
+    TEST_ASSERT_EQUAL_STRING("Espressif", getDeviceVendor(0, "24:0A:C4:11:22:33"));
+
+    // Specialized BleDevice types
+    BleDevice dev;
+    dev.type = DEVICE_TYPE_SAMSUNG;
+    TEST_ASSERT_EQUAL_STRING("Samsung", getDeviceVendor(dev));
+
+    dev.type = DEVICE_TYPE_TILE;
+    TEST_ASSERT_EQUAL_STRING("Tile", getDeviceVendor(dev));
+
+    dev.type = DEVICE_TYPE_FAST_PAIR;
+    TEST_ASSERT_EQUAL_STRING("Google", getDeviceVendor(dev));
+
+    dev.type = DEVICE_TYPE_GENERIC;
+    dev.manufacturerId = 0x0006; // Microsoft
+    TEST_ASSERT_EQUAL_STRING("Microsoft", getDeviceVendor(dev));
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
     RUN_TEST(test_oui_table_integrity_and_sorting);
@@ -198,5 +237,6 @@ int main(int argc, char** argv) {
     RUN_TEST(test_ieee_oui_lookup_mac_formats);
     RUN_TEST(test_device_vendor_resolution_and_fallback);
     RUN_TEST(test_ble_device_struct_vendor_integration);
+    RUN_TEST(test_oui_vendor_null_and_specialized_types);
     return UNITY_END();
 }

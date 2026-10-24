@@ -26,6 +26,10 @@ public:
     void setManualBrightness(uint8_t percent);
     void fadeTo(uint8_t targetPercent, uint16_t durationMs = 150);
 
+    // Duty cycle conversion helpers
+    uint8_t percentToDuty(float percent);
+    float dutyToPercent(uint8_t duty);
+
     // Getters for status & testing
     uint8_t getDutyCycle() const { return _currentDuty; }
     float getFilteredLight() const { return _filteredLight; }
@@ -37,9 +41,6 @@ private:
     uint8_t _currentDuty;
     float _filteredLight;
     bool _isFirstReading;
-
-    uint8_t percentToDuty(float percent);
-    float dutyToPercent(uint8_t duty);
 };
 
 #endif // BACKLIGHT_MANAGER_H

@@ -41,7 +41,6 @@ void ScreenshotManager::init() {
 }
 
 void ScreenshotManager::checkSerial() {
-#ifndef NATIVE_TEST
     while (Serial.available() > 0) {
         char c = (char)Serial.read();
         if (c == '\n' || c == '\r') {
@@ -53,7 +52,6 @@ void ScreenshotManager::checkSerial() {
             _serialBuffer += c;
         }
     }
-#endif
 }
 
 void ScreenshotManager::handleCommand(const String& cmd) {
@@ -115,7 +113,6 @@ bool ScreenshotManager::startCapture(ScreenshotFormat format) {
     _rleHasPending = false;
     _rleCount = 0;
 
-#ifndef NATIVE_TEST
     if (lv_disp_get_default()) {
         _width = lv_disp_get_hor_res(lv_disp_get_default());
         _height = lv_disp_get_ver_res(lv_disp_get_default());
@@ -132,6 +129,7 @@ bool ScreenshotManager::startCapture(ScreenshotFormat format) {
         Serial.write(hdr.bytes, sizeof(hdr.bytes));
     }
 
+#ifndef NATIVE_TEST
     // Force synchronous full-screen redraw through my_disp_flush
     lv_obj_invalidate(lv_scr_act());
     lv_refr_now(NULL);
@@ -224,9 +222,7 @@ void ScreenshotManager::rleFlushRun() {
         packet[0] = _rleCount;
         packet[1] = (uint8_t)(_rlePixel & 0xFF);
         packet[2] = (uint8_t)((_rlePixel >> 8) & 0xFF);
-#ifndef NATIVE_TEST
         Serial.write(packet, 3);
-#endif
         _rleCount = 0;
         _rleHasPending = false;
     }
@@ -290,9 +286,7 @@ void ScreenshotManager::onFlushTile(int32_t x1, int32_t y1, int32_t x2, int32_t 
                 rowBuf[c * 3 + 1] = green;
                 rowBuf[c * 3 + 2] = red;
             }
-#ifndef NATIVE_TEST
             Serial.write(rowBuf, tileW * 3);
-#endif
         }
     }
 }
@@ -313,10 +307,8 @@ void ScreenshotManager::endCapture() {
         if (_format == FORMAT_RLE16) {
             rleFlushRun();
         }
-#ifndef NATIVE_TEST
         Serial.print("\n>>>SCREENSHOT_END<<<\n");
         Serial.flush();
-#endif
     }
 
     _captureInProgress = false;

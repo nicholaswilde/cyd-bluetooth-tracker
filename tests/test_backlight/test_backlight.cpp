@@ -9,6 +9,7 @@ void tearDown(void) {}
 
 void test_backlight_initial_state(void) {
     BacklightManager bm(21, 0, 10.0f);
+    bm.begin();
     TEST_ASSERT_EQUAL(0, bm.getDutyCycle());
 }
 
@@ -52,9 +53,29 @@ void test_backlight_manual_brightness(void) {
     
     bm.setManualBrightness(100); // 100%
     TEST_ASSERT_EQUAL(255, bm.getDutyCycle());
+
+    bm.setManualBrightness(120); // Clamped above 100%
+    TEST_ASSERT_EQUAL(255, bm.getDutyCycle());
     
     bm.setManualBrightness(0); // Should be capped at min (10% -> 26)
     TEST_ASSERT_EQUAL(26, bm.getDutyCycle());
+
+    bm.setManualBrightness(5); // Clamped below min 10%
+    TEST_ASSERT_EQUAL(26, bm.getDutyCycle());
+}
+
+void test_backlight_duty_to_percent_boundaries(void) {
+    BacklightManager bm(21, 0, 10.0f);
+
+    // Below or equal to minDuty (26)
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 10.0f, bm.dutyToPercent(0));
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 10.0f, bm.dutyToPercent(26));
+
+    // At 255 (full)
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 100.0f, bm.dutyToPercent(255));
+
+    // Mid value (64 -> ~50%)
+    TEST_ASSERT_FLOAT_WITHIN(1.0f, 50.0f, bm.dutyToPercent(64));
 }
 
 void test_backlight_fade_to(void) {
@@ -64,6 +85,22 @@ void test_backlight_fade_to(void) {
     
     bm.fadeTo(50, 50); // Fade to 50% (should be 64 duty cycle)
     TEST_ASSERT_EQUAL(64, bm.getDutyCycle());
+
+    // Fade with small difference (diff < 0.5f)
+    bm.fadeTo(50, 50);
+    TEST_ASSERT_EQUAL(64, bm.getDutyCycle());
+
+    // Fade clamping high (> 100)
+    bm.fadeTo(120, 50);
+    TEST_ASSERT_EQUAL(255, bm.getDutyCycle());
+
+    // Fade clamping low (< 10)
+    bm.fadeTo(5, 50);
+    TEST_ASSERT_EQUAL(26, bm.getDutyCycle());
+
+    // Fade with duration 0 (stepDelay < 1)
+    bm.fadeTo(80, 0);
+    TEST_ASSERT_TRUE(bm.getDutyCycle() > 26);
 }
 
 void test_backlight_mode_switching(void) {
@@ -88,6 +125,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_backlight_mapping_extremes);
     RUN_TEST(test_backlight_smoothing);
     RUN_TEST(test_backlight_manual_brightness);
+    RUN_TEST(test_backlight_duty_to_percent_boundaries);
     RUN_TEST(test_backlight_fade_to);
     RUN_TEST(test_backlight_mode_switching);
     return UNITY_END();

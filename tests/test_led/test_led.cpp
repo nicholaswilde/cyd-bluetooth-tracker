@@ -225,6 +225,28 @@ void test_led_manager_cyd_35c_variant(void) {
     TEST_ASSERT_EQUAL(HIGH, mock_pin_states[16]);  // Blue off
 }
 
+void test_led_manager_state_off_and_edge_cases(void) {
+    LedManager lm(4, 16, 17);
+    lm.begin();
+
+    // Redundant setState call
+    lm.setState(LedManager::STATE_OFF);
+    lm.setState(LedManager::STATE_OFF);
+    lm.update(0);
+
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[4]);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[16]);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[17]);
+    TEST_ASSERT_EQUAL(LedManager::STATE_OFF, lm.getState());
+
+    // update while disabled
+    lm.setEnabled(false);
+    lm.update(100);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[4]);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[16]);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[17]);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_led_manager_initialization);
@@ -236,5 +258,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_led_manager_disabled_mode);
     RUN_TEST(test_led_manager_brightness_clamping);
     RUN_TEST(test_led_manager_cyd_35c_variant);
+    RUN_TEST(test_led_manager_state_off_and_edge_cases);
     return UNITY_END();
 }

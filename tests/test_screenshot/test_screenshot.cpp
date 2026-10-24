@@ -32,6 +32,7 @@ void setUp(void) {
     mock_sd_card_present = true;
     mock_sd_card_mounted = false;
     mock_files.clear();
+    Serial.clearRx();
     mock_last_tab = -1;
     mock_modal_opened = false;
     mock_modal_closed = false;
@@ -41,7 +42,9 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    ScreenshotManager::endCapture();
     ScreenshotManager::init();
+    Serial.clearRx();
     mock_files.clear();
 }
 
@@ -353,11 +356,51 @@ void test_screenshot_sd_capture_flow(void) {
     TEST_ASSERT_EQUAL('B', content[0]);
     TEST_ASSERT_EQUAL('M', content[1]);
 
+    // Test default filename generation when filepath is null
+    mock_sd_card_present = true;
+    bool defCapture = ScreenshotManager::captureToSD(nullptr);
+    TEST_ASSERT_TRUE(defCapture);
+
     // Test failure when SD card is not present
     mock_sd_card_present = false;
     bool failSuccess = ScreenshotManager::captureToSD("/fail.bmp");
     TEST_ASSERT_FALSE(failSuccess);
     TEST_ASSERT_FALSE(ScreenshotManager::isCaptureInProgress());
+}
+
+void test_screenshot_serial_streaming_flows(void) {
+    ScreenshotManager::init();
+
+    // 1. FORMAT_RLE16 streaming to serial
+    TEST_ASSERT_TRUE(ScreenshotManager::startCapture(FORMAT_RLE16));
+    TEST_ASSERT_TRUE(ScreenshotManager::isCaptureInProgress());
+
+    // Duplicate startCapture must return false
+    TEST_ASSERT_FALSE(ScreenshotManager::startCapture(FORMAT_RLE16));
+    TEST_ASSERT_FALSE(ScreenshotManager::beginCaptureToSD("/test.bmp"));
+
+    // Flush a tile of pixels
+    uint16_t tileRle[20] = {0};
+    for (int i = 0; i < 20; i++) tileRle[i] = 0xF800;
+    ScreenshotManager::onFlushTile(0, 0, 19, 0, tileRle);
+
+    // End capture
+    ScreenshotManager::endCapture();
+    TEST_ASSERT_FALSE(ScreenshotManager::isCaptureInProgress());
+
+    // 2. FORMAT_BMP24 streaming to serial
+    TEST_ASSERT_TRUE(ScreenshotManager::startCapture(FORMAT_BMP24));
+    uint16_t tileBmp[10] = {0x07E0, 0x001F};
+    ScreenshotManager::onFlushTile(0, 0, 9, 0, tileBmp);
+    ScreenshotManager::endCapture();
+    TEST_ASSERT_FALSE(ScreenshotManager::isCaptureInProgress());
+
+    // 3. onFlushTile guards: null pixels or not in progress
+    ScreenshotManager::onFlushTile(0, 0, 9, 0, nullptr);
+    ScreenshotManager::onFlushTile(0, 0, 9, 0, tileBmp);
+
+    // Duplicate endCapture is safe
+    ScreenshotManager::endCapture();
 }
 
 void test_screenshot_handle_command(void) {
@@ -384,9 +427,34 @@ void test_screenshot_handle_command(void) {
     ScreenshotManager::handleCommand("tracker close");
     TEST_ASSERT_TRUE(mock_tracker_closed);
 
+    // Screenshot commands
+    ScreenshotManager::handleCommand("screenshot");
+    ScreenshotManager::endCapture();
+
+    ScreenshotManager::handleCommand("screenshot raw");
+    ScreenshotManager::endCapture();
+
+    ScreenshotManager::handleCommand("screenshot sd");
+
     // Empty command handling
     ScreenshotManager::handleCommand("   ");
     TEST_ASSERT_FALSE(ScreenshotManager::isCaptureInProgress());
+}
+
+void test_screenshot_check_serial(void) {
+    ScreenshotManager::init();
+    mock_last_tab = -1;
+
+    // Inject "tab 3\n"
+    Serial.injectRx("tab 3\n");
+    ScreenshotManager::checkSerial();
+    TEST_ASSERT_EQUAL(3, mock_last_tab);
+
+    // Inject "modal open\r"
+    mock_modal_opened = false;
+    Serial.injectRx("modal open\r");
+    ScreenshotManager::checkSerial();
+    TEST_ASSERT_TRUE(mock_modal_opened);
 }
 
 int main(int argc, char **argv) {
@@ -402,6 +470,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_screenshot_color_conversion);
     RUN_TEST(test_screenshot_filename_generation);
     RUN_TEST(test_screenshot_sd_capture_flow);
+    RUN_TEST(test_screenshot_serial_streaming_flows);
     RUN_TEST(test_screenshot_handle_command);
+    RUN_TEST(test_screenshot_check_serial);
     return UNITY_END();
 }

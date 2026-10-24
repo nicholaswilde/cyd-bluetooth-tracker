@@ -36,11 +36,35 @@ void test_tracker_add_and_get_devices(void) {
     TEST_ASSERT_EQUAL(-60, list[0].rssi);
     TEST_ASSERT_EQUAL(DEVICE_TYPE_IBEACON, list[0].type);
 
-    // Update existing device with new RSSI
+    // Update existing device with new RSSI, txPower, serviceUuid, mfgHex
     d1.rssi = -52;
+    d1.txPower = -50;
+    d1.serviceUuid = "180D";
+    d1.manufacturerDataHex = "000002151122";
     bleTracker.addOrUpdateDevice(d1);
     TEST_ASSERT_EQUAL(1, bleTracker.getDiscoveredCount());
     TEST_ASSERT_EQUAL(-52, bleTracker.getDevices()[0].rssi);
+
+    // Samsung beacon
+    BleDevice dSamsung;
+    dSamsung.mac = "11:22:33:44:55:01";
+    dSamsung.manufacturerId = 0x0075;
+    bleTracker.addOrUpdateDevice(dSamsung);
+    TEST_ASSERT_EQUAL(DEVICE_TYPE_SAMSUNG, bleTracker.getDevices().back().type);
+
+    // Tile beacon
+    BleDevice dTile;
+    dTile.mac = "11:22:33:44:55:02";
+    dTile.serviceUuid = "feed";
+    bleTracker.addOrUpdateDevice(dTile);
+    TEST_ASSERT_EQUAL(DEVICE_TYPE_TILE, bleTracker.getDevices().back().type);
+
+    // Fast Pair beacon
+    BleDevice dFastPair;
+    dFastPair.mac = "11:22:33:44:55:03";
+    dFastPair.serviceUuid = "fe2c";
+    bleTracker.addOrUpdateDevice(dFastPair);
+    TEST_ASSERT_EQUAL(DEVICE_TYPE_FAST_PAIR, bleTracker.getDevices().back().type);
 }
 
 void test_tracker_distance_estimation(void) {
@@ -57,6 +81,17 @@ void test_tracker_distance_estimation(void) {
     // ( -59 - (-81) ) / (10 * 2.2) = 22 / 22 = 1.0 -> 10^1 = 10.0 meters
     float distFar = d.getEstimatedDistance();
     TEST_ASSERT_FLOAT_WITHIN(0.5f, 10.0f, distFar);
+
+    // RSSI 0 returns -1.0
+    BleDevice dZero;
+    dZero.rssi = 0;
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -1.0f, dZero.getEstimatedDistance());
+
+    // txPower 0 defaults to -59
+    BleDevice dNoTx;
+    dNoTx.rssi = -59;
+    dNoTx.txPower = 0;
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 1.0f, dNoTx.getEstimatedDistance());
 }
 
 void test_tracker_sorting_and_filtering(void) {
@@ -80,6 +115,12 @@ void test_tracker_sorting_and_filtering(void) {
     TEST_ASSERT_EQUAL_STRING("02", sortedName[0].mac.c_str()); // Alpha
     TEST_ASSERT_EQUAL_STRING("03", sortedName[1].mac.c_str()); // Unknown
     TEST_ASSERT_EQUAL_STRING("01", sortedName[2].mac.c_str()); // Zulu
+
+    // Sort by Last Seen (sortMode 2)
+    auto sortedLastSeen = bleTracker.getFilteredDevices(2, 0, -95);
+    TEST_ASSERT_EQUAL_STRING("02", sortedLastSeen[0].mac.c_str()); // 300
+    TEST_ASSERT_EQUAL_STRING("03", sortedLastSeen[1].mac.c_str()); // 200
+    TEST_ASSERT_EQUAL_STRING("01", sortedLastSeen[2].mac.c_str()); // 100
 
     // Filter by Min RSSI (-70)
     auto filteredMinRssi = bleTracker.getFilteredDevices(0, 0, -70);
@@ -272,6 +313,92 @@ void test_tracker_trend_after_history_wraps(void) {
     bleTracker.clearTrackedTarget();
 }
 
+void test_tracker_begin_and_scan_trigger(void) {
+    settings.setScanIntervalMs(2500);
+    settings.setPinnedMac("AA:BB:CC:11:22:33");
+    bleTracker.begin();
+    TEST_ASSERT_EQUAL_UINT32(2500, bleTracker.getScanInterval());
+    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:11:22:33", bleTracker.getTrackedTarget().c_str());
+
+    // When scan interval is 0 in settings, begin defaults to DEFAULT_SCAN_INTERVAL_MS
+    settings.setScanIntervalMs(500); // minimum allowed is 500 in settings
+    bleTracker.begin();
+    TEST_ASSERT_EQUAL_UINT32(500, bleTracker.getScanInterval());
+
+    bleTracker.triggerScan();
+    TEST_ASSERT_TRUE(bleTracker.isScanning());
+}
+
+void test_tracker_clear_devices(void) {
+    BleDevice d;
+    d.mac = "12:34:56:78:9A:BC";
+    d.name = "ClearMe";
+    d.rssi = -65;
+    d.lastSeen = 1000;
+    bleTracker.addOrUpdateDevice(d);
+    bleTracker.setTrackedTarget(d.mac);
+
+    TEST_ASSERT_TRUE(bleTracker.getDevices().size() > 0);
+    TEST_ASSERT_EQUAL_STRING(d.mac.c_str(), bleTracker.getTrackedTarget().c_str());
+
+    bleTracker.clearDevices();
+    TEST_ASSERT_EQUAL(0, bleTracker.getDevices().size());
+    TEST_ASSERT_EQUAL_STRING("", bleTracker.getTrackedTarget().c_str());
+}
+
+void test_tracker_rssi_history_and_slope_edge_cases(void) {
+    bleTracker.clearTrackedTarget();
+    TEST_ASSERT_EQUAL_INT8(RSSI_FLOOR, bleTracker.getSmoothedRssi());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, bleTracker.getRssiSlope());
+
+    // Null and zero count bounds safety
+    bleTracker.getRssiHistory(nullptr, 0);
+    int8_t hist[4];
+    bleTracker.getRssiHistory(hist, 0);
+}
+
+void test_tracker_add_or_update_existing_and_vendor_override(void) {
+    BleDevice dev;
+    dev.mac = "99:88:77:66:55:44";
+    dev.name = "Initial";
+    dev.rssi = -60;
+    dev.lastSeen = 1000;
+    dev.isPinned = false;
+    bleTracker.addOrUpdateDevice(dev);
+
+    // Update with new pinned status and custom vendor
+    dev.name = "Renamed";
+    dev.isPinned = true;
+    dev.vendor = "Custom Corp";
+    bleTracker.addOrUpdateDevice(dev);
+
+    const BleDevice* updated = nullptr;
+    for (const auto& d : bleTracker.getDevices()) {
+        if (d.mac == "99:88:77:66:55:44") {
+            updated = &d;
+            break;
+        }
+    }
+    TEST_ASSERT_NOT_NULL(updated);
+    TEST_ASSERT_EQUAL_STRING("Renamed", updated->name.c_str());
+    TEST_ASSERT_TRUE(updated->isPinned);
+    TEST_ASSERT_EQUAL_STRING("Custom Corp", updated->getVendor());
+}
+
+void test_ble_device_get_vendor_fallbacks(void) {
+    // When vendor is empty, fall back to OUI resolution
+    BleDevice d1;
+    d1.vendor = "";
+    d1.mac = "00:03:93:11:22:33"; // Apple OUI
+    TEST_ASSERT_EQUAL_STRING("Apple", d1.getVendor());
+
+    // When vendor is "Unknown Vendor", fall back to OUI resolution
+    BleDevice d2;
+    d2.vendor = "Unknown Vendor";
+    d2.mac = "00:03:93:11:22:33";
+    TEST_ASSERT_EQUAL_STRING("Apple", d2.getVendor());
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tracker_add_and_get_devices);
@@ -286,5 +413,10 @@ int main(void) {
     RUN_TEST(test_tracker_trend_drifting);
     RUN_TEST(test_tracker_trend_stable_with_noise);
     RUN_TEST(test_tracker_trend_after_history_wraps);
+    RUN_TEST(test_tracker_begin_and_scan_trigger);
+    RUN_TEST(test_tracker_clear_devices);
+    RUN_TEST(test_tracker_rssi_history_and_slope_edge_cases);
+    RUN_TEST(test_tracker_add_or_update_existing_and_vendor_override);
+    RUN_TEST(test_ble_device_get_vendor_fallbacks);
     return UNITY_END();
 }
