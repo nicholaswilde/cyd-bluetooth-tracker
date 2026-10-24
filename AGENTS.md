@@ -51,6 +51,13 @@
 
 ## Context-Mode MCP Integration
 This project uses `context-mode` for token-optimized command execution, file inspection, and searching.
+- **Call Pattern**: Always invoke tools via `call_mcp_tool` with `ServerName: "context-mode"`:
+  - `ctx_execute`: Run commands (shell, JavaScript, Python) in-sandbox. For shell commands, pass `language: "shell"` and prefix commands with `rtk` (e.g. `rtk git status`, `rtk test pio test -e native`, `rtk gh issue list | cat`).
+  - `ctx_execute_file`: Inspect, summarize, or extract data from files in-sandbox (`language: "javascript"`, `FILE_CONTENT`) without dumping raw content into context. (Native `read_file` is reserved for targeted exact-byte inspection right before `edit_file`).
+  - `ctx_batch_execute`: Batch execute multiple repository inspection commands and query results.
+  - `ctx_search` & `ctx_index`: Search and index codebase content and session memory.
+  - `ctx_doctor`: Verify context-mode health and runtime status.
+- **Synergy with RTK**: RTK token optimization works in tandem with Context-Mode. Inside `ctx_execute` (shell), prefix commands with `rtk` to filter output before returning only the processed answer.
 - **Rules Reference**: See [`.agents/rules/context-mode-rules.md`](.agents/rules/context-mode-rules.md).
 
 ## Serena Semantic Code Navigation & LSP
