@@ -177,8 +177,18 @@ def main():
 
         if args.all:
             print("Capturing all screens in sequence...")
-            # 1. Capture all tabs
-            for idx, name in enumerate(tab_names):
+            # 1. Capture Tracker Tab with active demo target
+            print("Opening Tracker view with active target...")
+            ser.write(b"tracker\n")
+            ser.flush()
+            time.sleep(1.2)  # Allow LVGL redraw
+            img = capture_frame(ser, fmt_cmd)
+            out_path = "screenshots/tracker.png"
+            img.save(out_path)
+            print(f"  Saved {out_path} ({img.width}x{img.height})")
+
+            # 2. Capture remaining tabs (devices, settings)
+            for idx, name in [(1, "devices"), (2, "settings")]:
                 print(f"Switching to Tab {idx} ({name})...")
                 ser.write(f"tab {idx}\n".encode("ascii"))
                 ser.flush()
@@ -188,7 +198,7 @@ def main():
                 img.save(out_path)
                 print(f"  Saved {out_path} ({img.width}x{img.height})")
 
-            # 2. Capture Device Detail Modal
+            # 3. Capture Device Detail Modal
             print("Opening Device Detail Modal...")
             ser.write(b"modal\n")
             ser.flush()

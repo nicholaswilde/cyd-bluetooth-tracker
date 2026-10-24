@@ -6,6 +6,7 @@
 #include "led_manager.h"
 #include "audio_manager.h"
 #include "display.h"
+#include "oui.h"
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -219,7 +220,12 @@ void openDetailModal(const BleDevice& dev) {
 
     // Title / Name
     s_modal_lbl_name = lv_label_create(s_detail_modal);
-    lv_label_set_text(s_modal_lbl_name, dev.name.c_str());
+    std::string displayName = dev.name;
+    const char* v = dev.getVendor();
+    if ((displayName.empty() || displayName == "Unknown") && strcmp(v, "Unknown Vendor") != 0) {
+        displayName = std::string(v) + " (Unknown)";
+    }
+    lv_label_set_text(s_modal_lbl_name, displayName.c_str());
     lv_obj_set_style_text_color(s_modal_lbl_name, TO_LV_COLOR(p.mauve), LV_PART_MAIN);
     lv_obj_set_style_text_font(s_modal_lbl_name, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(s_modal_lbl_name, LV_ALIGN_TOP_LEFT, 0, 0);
@@ -265,10 +271,26 @@ void openDetailModal(const BleDevice& dev) {
     else if (dev.type == DEVICE_TYPE_TILE) mfgText += "Tile Tag";
     else if (dev.type == DEVICE_TYPE_FAST_PAIR) mfgText += "Google Fast Pair";
     else if (dev.manufacturerId != 0) {
-        char mBuf[32]; snprintf(mBuf, sizeof(mBuf), "ID 0x%04X", dev.manufacturerId);
+        const char* comp = getBtCompanyName(dev.manufacturerId);
+        char mBuf[48];
+        if (strcmp(comp, "Unknown Vendor") != 0) {
+            snprintf(mBuf, sizeof(mBuf), "%s (0x%04X)", comp, dev.manufacturerId);
+        } else {
+            const char* oui = getOuiVendor(dev.mac);
+            if (strcmp(oui, "Unknown Vendor") != 0) {
+                snprintf(mBuf, sizeof(mBuf), "%s (ID 0x%04X)", oui, dev.manufacturerId);
+            } else {
+                snprintf(mBuf, sizeof(mBuf), "ID 0x%04X", dev.manufacturerId);
+            }
+        }
         mfgText += mBuf;
     } else {
-        mfgText += "Generic BLE";
+        const char* oui = getOuiVendor(dev.mac);
+        if (strcmp(oui, "Unknown Vendor") != 0) {
+            mfgText += std::string(oui) + " (OUI)";
+        } else {
+            mfgText += "Generic BLE";
+        }
     }
     lv_label_set_text(s_modal_lbl_mfg, mfgText.c_str());
     lv_obj_set_style_text_color(s_modal_lbl_mfg, TO_LV_COLOR(p.text), LV_PART_MAIN);
@@ -677,13 +699,15 @@ void initUI() {
     lv_label_set_text(s_tracker_lbl_rssi, "-- dBm");
     lv_obj_set_style_text_font(s_tracker_lbl_rssi, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_tracker_lbl_rssi, TO_LV_COLOR(p.text), LV_PART_MAIN);
-    lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, -6, -8);
+    lv_obj_set_style_text_align(s_tracker_lbl_rssi, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
 
     s_tracker_lbl_proximity = lv_label_create(s_tab_tracker);
     lv_label_set_text(s_tracker_lbl_proximity, "STANDBY");
     lv_obj_set_style_text_font(s_tracker_lbl_proximity, &lv_font_montserrat_10, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_tracker_lbl_proximity, TO_LV_COLOR(p.subtext0), LV_PART_MAIN);
-    lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, -6, 14);
+    lv_obj_set_style_text_align(s_tracker_lbl_proximity, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
 
     // Sparkline Chart (Right side)
     s_tracker_chart = lv_chart_create(s_tab_tracker);
@@ -949,9 +973,27 @@ static void updateDevicesList(bool force) {
         for (const auto& d : filtered) {
             s_device_list_macs.push_back(d.mac);
 
-            char btnText[64];
-            snprintf(btnText, sizeof(btnText), "%s\n%s (%d dBm)",
-                     d.name.c_str(), d.mac.c_str(), (int)d.rssi);
+            char btnText[96];
+            const char* v = d.getVendor();
+            bool hasVendor = (strcmp(v, "Unknown Vendor") != 0);
+
+            if (d.name.empty() || d.name == "Unknown") {
+                if (hasVendor) {
+                    snprintf(btnText, sizeof(btnText), "%s (Unknown)\n%s (%d dBm)",
+                             v, d.mac.c_str(), (int)d.rssi);
+                } else {
+                    snprintf(btnText, sizeof(btnText), "%s\n%s (%d dBm)",
+                             d.name.c_str(), d.mac.c_str(), (int)d.rssi);
+                }
+            } else {
+                if (hasVendor && d.name.find(v) == std::string::npos) {
+                    snprintf(btnText, sizeof(btnText), "%s [%s]\n%s (%d dBm)",
+                             d.name.c_str(), v, d.mac.c_str(), (int)d.rssi);
+                } else {
+                    snprintf(btnText, sizeof(btnText), "%s\n%s (%d dBm)",
+                             d.name.c_str(), d.mac.c_str(), (int)d.rssi);
+                }
+            }
 
             const char* icon = LV_SYMBOL_BLUETOOTH;
             if (d.type == DEVICE_TYPE_APPLE) icon = LV_SYMBOL_EYE_OPEN;
@@ -975,7 +1017,12 @@ void updateUI() {
     // Update Tracker Tab
     const BleDevice* target = bleTracker.getTrackedDevice();
     if (target) {
-        lv_label_set_text(s_tracker_lbl_title, target->name.c_str());
+        std::string targetTitle = target->name;
+        const char* tv = target->getVendor();
+        if ((targetTitle.empty() || targetTitle == "Unknown") && strcmp(tv, "Unknown Vendor") != 0) {
+            targetTitle = std::string(tv) + " (Unknown)";
+        }
+        lv_label_set_text(s_tracker_lbl_title, targetTitle.c_str());
         char detBuf[64];
         float dist = target->getEstimatedDistance();
         if (dist > 0.0f) {
@@ -996,7 +1043,7 @@ void updateUI() {
         char rBuf[32];
         snprintf(rBuf, sizeof(rBuf), "%d dBm", (int)rssi);
         lv_label_set_text(s_tracker_lbl_rssi, rBuf);
-        lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, -6, -8);
+        lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
 
         if (rssi >= RSSI_ZONE_IMMEDIATE) {
             lv_label_set_text(s_tracker_lbl_proximity, "IMMEDIATE");
@@ -1011,7 +1058,7 @@ void updateUI() {
             lv_label_set_text(s_tracker_lbl_proximity, "FAR / WEAK");
             led.setState(LedManager::STATE_CONGESTED_RED);
         }
-        lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, -6, 14);
+        lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
 
         // Update history chart
         int8_t hist[8];
@@ -1044,9 +1091,9 @@ void updateUI() {
         lv_label_set_text(s_tracker_lbl_details, "Select a device in Devices tab");
         lv_arc_set_value(s_tracker_arc, 0);
         lv_label_set_text(s_tracker_lbl_rssi, "-- dBm");
-        lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, -6, -8);
+        lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
         lv_label_set_text(s_tracker_lbl_proximity, "STANDBY");
-        lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, -6, 14);
+        lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
         lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " STABLE");
         lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
         audio.clearTarget();

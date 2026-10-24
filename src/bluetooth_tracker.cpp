@@ -163,6 +163,13 @@ void BluetoothTracker::processFoundDevice(const std::string& mac, const std::str
                 d.isPinned = isPinned;
                 _catalogVersion++;
             }
+            if (d.vendor.empty() || d.vendor == "Unknown Vendor") {
+                const char* resolved = getDeviceVendor(d);
+                if (strcmp(resolved, "Unknown Vendor") != 0 && d.vendor != resolved) {
+                    d.vendor = resolved;
+                    _catalogVersion++;
+                }
+            }
             found = true;
             break;
         }
@@ -180,6 +187,7 @@ void BluetoothTracker::processFoundDevice(const std::string& mac, const std::str
         newDev.lastSeen = now;
         newDev.isPinned = isPinned;
         newDev.type = type;
+        newDev.vendor = getDeviceVendor(newDev);
         _devices.push_back(newDev);
         _catalogVersion++;
     }
@@ -338,6 +346,9 @@ void BluetoothTracker::addOrUpdateDevice(const BleDevice& dev) {
                 d.isPinned = dev.isPinned;
                 _catalogVersion++;
             }
+            if (!dev.vendor.empty()) {
+                d.vendor = dev.vendor;
+            }
             break;
         }
     }
@@ -347,4 +358,11 @@ void BluetoothTracker::clearDevices() {
     _devices.clear();
     clearTrackedTarget();
     _catalogVersion++;
+}
+
+const char* BleDevice::getVendor() const {
+    if (!vendor.empty() && vendor != "Unknown Vendor") {
+        return vendor.c_str();
+    }
+    return getDeviceVendor(*this);
 }

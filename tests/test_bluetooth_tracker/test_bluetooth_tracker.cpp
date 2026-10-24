@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include "../mocks/mocks.cpp"
 #include "../../src/settings_manager.cpp"
+#include "../../src/oui.cpp"
 #include "../../src/bluetooth_tracker.cpp"
 #include "bluetooth_tracker.h"
 

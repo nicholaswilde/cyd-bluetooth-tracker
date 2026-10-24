@@ -6,6 +6,7 @@
 #include <vector>
 #include <cmath>
 #include "config/config.h"
+#include "oui.h"
 
 enum BleDeviceType {
     DEVICE_TYPE_GENERIC,
@@ -33,6 +34,7 @@ struct BleDevice {
     unsigned long lastSeen;
     bool isPinned;
     BleDeviceType type;
+    std::string vendor;
 
     float getEstimatedDistance() const {
         if (rssi == 0) return -1.0f;
@@ -40,6 +42,8 @@ struct BleDevice {
         float ratio = (float)(refPower - rssi) / (10.0f * 2.2f);
         return powf(10.0f, ratio);
     }
+
+    const char* getVendor() const;
 };
 
 class BluetoothTracker {
