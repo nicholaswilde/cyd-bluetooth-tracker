@@ -25,6 +25,16 @@ def format_special_thanks(thanks, reason=None):
     else:
         return f"Huge thanks to **{name}**!"
 
+def get_repo_slug():
+    try:
+        url = run_cmd("git remote get-url origin").strip()
+        m = re.search(r"github\.com[:/]([^/]+/[^/.]+?)(?:\.git)?$", url)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "nicholaswilde/cyd-bluetooth-tracker"
+
 def main():
     parser = argparse.ArgumentParser(description="Generate release summary")
     parser.add_argument("range", nargs="?", default=None, help="Git commit or tag range (e.g. v0.1.0..v0.1.1)")
@@ -112,13 +122,14 @@ def main():
     if thanks_entry:
         summary.append(f"### 🙏 **Special Thanks**\n\n{thanks_entry}\n")
         
+    repo_slug = get_repo_slug()
     url_range = git_range.replace("..", "...")
     if git_range == "HEAD" and latest == "HEAD":
-        summary.append("**Full Changelog**: https://github.com/nicholaswilde/cyd-wifi-analyzer/commits/main\n")
+        summary.append(f"**Full Changelog**: https://github.com/{repo_slug}/commits/main\n")
     elif git_range == "HEAD":
-        summary.append(f"**Full Changelog**: https://github.com/nicholaswilde/cyd-wifi-analyzer/commits/{latest}\n")
+        summary.append(f"**Full Changelog**: https://github.com/{repo_slug}/commits/{latest}\n")
     else:
-        summary.append(f"**Full Changelog**: https://github.com/nicholaswilde/cyd-wifi-analyzer/compare/{url_range}\n")
+        summary.append(f"**Full Changelog**: https://github.com/{repo_slug}/compare/{url_range}\n")
     
     notes = "\n".join(summary)
     
