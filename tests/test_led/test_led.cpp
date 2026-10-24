@@ -200,6 +200,31 @@ void test_led_manager_brightness_clamping(void) {
     TEST_ASSERT_EQUAL(128, lm.getBrightness());
 }
 
+void test_led_manager_cyd_35c_variant(void) {
+    // 3.5" Capacitive CYD (ESP32-3248S035C) swaps Green (17) and Blue (16) pins
+    LedManager lm35(4, 17, 16);
+    lm35.begin();
+
+    // Verify pin modes configured as OUTPUT
+    TEST_ASSERT_EQUAL(OUTPUT, mock_pin_modes[4]);
+    TEST_ASSERT_EQUAL(OUTPUT, mock_pin_modes[17]);
+    TEST_ASSERT_EQUAL(OUTPUT, mock_pin_modes[16]);
+
+    // Blue scanning blink should toggle pin 16 on 3.5" board
+    lm35.setState(LedManager::STATE_SCANNING);
+    lm35.update(0);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[4]);   // Red off
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[17]);  // Green off
+    TEST_ASSERT_EQUAL(LOW, mock_pin_states[16]);   // Blue on (pin 16)
+
+    // Clean green should illuminate pin 17 on 3.5" board
+    lm35.setState(LedManager::STATE_CLEAN);
+    lm35.update(100);
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[4]);   // Red off
+    TEST_ASSERT_EQUAL(LOW, mock_pin_states[17]);   // Green on (pin 17)
+    TEST_ASSERT_EQUAL(HIGH, mock_pin_states[16]);  // Blue off
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_led_manager_initialization);
@@ -210,5 +235,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_led_manager_alert_red);
     RUN_TEST(test_led_manager_disabled_mode);
     RUN_TEST(test_led_manager_brightness_clamping);
+    RUN_TEST(test_led_manager_cyd_35c_variant);
     return UNITY_END();
 }
