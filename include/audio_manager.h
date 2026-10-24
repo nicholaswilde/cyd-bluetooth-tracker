@@ -16,6 +16,8 @@ public:
 
     void setTargetRssi(int8_t rssi);
     void clearTarget();
+    bool hasTarget() const { return _hasTarget; }
+    int8_t getTargetRssi() const { return _targetRssi; }
 
     void setEnabled(bool enabled);
     bool isEnabled() const { return _enabled; }
@@ -23,9 +25,14 @@ public:
     void setVolume(uint8_t volumePercent);
     uint8_t getVolume() const { return _volume; }
 
+    // Static mapping helpers
+    static uint16_t rssiToFrequency(int8_t rssi);
+    static uint32_t rssiToIntervalMs(int8_t rssi);
+
     // Test inspection
     bool isBeeping() const { return _isTonePlaying; }
     uint32_t getBeepIntervalMs() const { return _currentIntervalMs; }
+    uint16_t getLastFrequency() const { return _lastFrequency; }
 
 private:
     void stopTone();
@@ -36,11 +43,13 @@ private:
     uint8_t _volume;
 
     int8_t _targetRssi;
+    bool _hasTarget;
     unsigned long _lastBeepTime;
     unsigned long _toneStartTime;
     uint16_t _toneDuration;
     bool _isTonePlaying;
     uint32_t _currentIntervalMs;
+    uint16_t _lastFrequency;
 };
 
 extern AudioManager audio;

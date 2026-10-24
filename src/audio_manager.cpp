@@ -14,11 +14,13 @@ AudioManager::AudioManager(uint8_t pin, uint8_t channel)
       _enabled(DEFAULT_AUDIO_GEIGER),
       _volume(DEFAULT_AUDIO_VOLUME),
       _targetRssi(RSSI_FLOOR),
+      _hasTarget(false),
       _lastBeepTime(0),
       _toneStartTime(0),
       _toneDuration(0),
       _isTonePlaying(false),
-      _currentIntervalMs(0) {}
+      _currentIntervalMs(0),
+      _lastFrequency(0) {}
 
 void AudioManager::begin() {
 #ifndef NATIVE_TEST
@@ -40,6 +42,7 @@ void AudioManager::playTone(uint16_t freqHz, uint16_t durationMs) {
     _toneDuration = durationMs;
     _toneStartTime = millis();
     _isTonePlaying = true;
+    _lastFrequency = freqHz;
 
 #ifndef NATIVE_TEST
     uint32_t duty = (_volume * 128) / 100;
@@ -70,10 +73,12 @@ void AudioManager::stopTone() {
 
 void AudioManager::setTargetRssi(int8_t rssi) {
     _targetRssi = rssi;
+    _hasTarget = true;
 }
 
 void AudioManager::clearTarget() {
     _targetRssi = RSSI_FLOOR;
+    _hasTarget = false;
     stopTone();
 }
 
@@ -87,6 +92,37 @@ void AudioManager::setEnabled(bool enabled) {
 void AudioManager::setVolume(uint8_t volumePercent) {
     if (volumePercent > 100) volumePercent = 100;
     _volume = volumePercent;
+    if (_volume == 0) {
+        stopTone();
+    }
+}
+
+uint16_t AudioManager::rssiToFrequency(int8_t rssi) {
+    int clampedRssi = rssi;
+    if (clampedRssi < RSSI_FLOOR) clampedRssi = RSSI_FLOOR;
+    if (clampedRssi > RSSI_CEILING) clampedRssi = RSSI_CEILING;
+
+    // Linear interpolation between RSSI_FLOOR (-100 dBm) and RSSI_CEILING (-30 dBm)
+    // mapping to 900 Hz up to 2600 Hz
+    float ratio = (float)(clampedRssi - RSSI_FLOOR) / (float)(RSSI_CEILING - RSSI_FLOOR);
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+
+    return (uint16_t)(900.0f + (ratio * 1700.0f));
+}
+
+uint32_t AudioManager::rssiToIntervalMs(int8_t rssi) {
+    int clampedRssi = rssi;
+    if (clampedRssi < RSSI_FLOOR) clampedRssi = RSSI_FLOOR;
+    if (clampedRssi > RSSI_CEILING) clampedRssi = RSSI_CEILING;
+
+    // Linear interpolation between RSSI_FLOOR (-100 dBm) and RSSI_CEILING (-30 dBm)
+    // mapping to 1200 ms down to 70 ms
+    float ratio = (float)(clampedRssi - RSSI_FLOOR) / (float)(RSSI_CEILING - RSSI_FLOOR);
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+
+    return (uint32_t)(1200.0f - (ratio * 1130.0f));
 }
 
 void AudioManager::update(unsigned long currentMillis) {
@@ -96,23 +132,12 @@ void AudioManager::update(unsigned long currentMillis) {
         }
     }
 
-    if (!_enabled || _volume == 0 || _targetRssi <= RSSI_FLOOR) {
+    if (!_enabled || _volume == 0 || !_hasTarget) {
         return;
     }
 
-    // Map RSSI (-95 dBm to -35 dBm) to beep interval (1200ms down to 70ms)
-    // and pitch (900 Hz up to 2600 Hz)
-    int clampedRssi = _targetRssi;
-    if (clampedRssi < RSSI_FLOOR) clampedRssi = RSSI_FLOOR;
-    if (clampedRssi > RSSI_CEILING) clampedRssi = RSSI_CEILING;
-
-    // Linear interpolation
-    float ratio = (float)(clampedRssi - RSSI_FLOOR) / (float)(RSSI_CEILING - RSSI_FLOOR);
-    if (ratio < 0.0f) ratio = 0.0f;
-    if (ratio > 1.0f) ratio = 1.0f;
-
-    _currentIntervalMs = (uint32_t)(1200.0f - (ratio * 1120.0f));
-    uint16_t freq = (uint16_t)(900.0f + (ratio * 1700.0f));
+    _currentIntervalMs = rssiToIntervalMs(_targetRssi);
+    uint16_t freq = rssiToFrequency(_targetRssi);
 
     if (currentMillis - _lastBeepTime >= _currentIntervalMs) {
         _lastBeepTime = currentMillis;
