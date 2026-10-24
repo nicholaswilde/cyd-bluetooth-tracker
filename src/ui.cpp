@@ -30,6 +30,7 @@ static lv_chart_series_t* s_tracker_ser = nullptr;
 static lv_obj_t* s_tracker_btn_audio = nullptr;
 static lv_obj_t* s_tracker_lbl_audio = nullptr;
 static lv_obj_t* s_tracker_btn_clear = nullptr;
+static lv_obj_t* s_tracker_btn_cycle = nullptr;
 static lv_obj_t* s_tracker_lbl_stats = nullptr;
 
 // Devices Tab Widgets
@@ -119,6 +120,36 @@ static void tracker_clear_btn_event_cb(lv_event_t* e) {
     }
 }
 
+static void tracker_cycle_btn_event_cb(lv_event_t* e) {
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        const auto& pinned = settings.getPinnedMacs();
+        if (pinned.empty()) {
+            showUIStatusMessage("No Pinned Favorites");
+            return;
+        }
+        std::string current = bleTracker.getTrackedTarget();
+        size_t nextIdx = 0;
+        for (size_t i = 0; i < pinned.size(); ++i) {
+            if (pinned[i] == current) {
+                nextIdx = (i + 1) % pinned.size();
+                break;
+            }
+        }
+        std::string nextMac = pinned[nextIdx];
+        bleTracker.setTrackedTarget(nextMac);
+        const BleDevice* dev = bleTracker.getTrackedDevice();
+        if (dev) {
+            audio.setTargetRssi(dev->rssi);
+        } else {
+            audio.clearTarget();
+        }
+        char msg[48];
+        snprintf(msg, sizeof(msg), "Target %u of %u", (unsigned)(nextIdx + 1), (unsigned)pinned.size());
+        showUIStatusMessage(msg);
+        updateUI();
+    }
+}
+
 static void device_item_click_cb(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         const char* macStr = (const char*)lv_event_get_user_data(e);
@@ -145,16 +176,21 @@ static void modal_track_btn_cb(lv_event_t* e) {
 
 static void modal_pin_btn_cb(lv_event_t* e) {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        std::string currentPinned = settings.getPinnedMac();
-        if (currentPinned == s_modal_dev.mac) {
-            settings.setPinnedMac("");
-            showUIStatusMessage("Unpinned Target");
+        if (settings.isMacPinned(s_modal_dev.mac)) {
+            settings.removePinnedMac(s_modal_dev.mac);
+            bleTracker.updatePinnedDevices();
+            showUIStatusMessage("Unpinned Favorite");
             if (s_modal_lbl_pin) lv_label_set_text(s_modal_lbl_pin, LV_SYMBOL_SAVE " Pin");
         } else {
-            settings.setPinnedMac(s_modal_dev.mac);
-            showUIStatusMessage("Pinned Target");
-            if (s_modal_lbl_pin) lv_label_set_text(s_modal_lbl_pin, LV_SYMBOL_OK " Unpin");
+            if (settings.addPinnedMac(s_modal_dev.mac)) {
+                bleTracker.updatePinnedDevices();
+                showUIStatusMessage("Pinned Favorite");
+                if (s_modal_lbl_pin) lv_label_set_text(s_modal_lbl_pin, LV_SYMBOL_OK " Unpin");
+            } else {
+                showUIStatusMessage("Max 8 Pinned Limit!");
+            }
         }
+        updateUI();
     }
 }
 
@@ -322,7 +358,7 @@ void openDetailModal(const BleDevice& dev) {
     lv_obj_set_style_bg_color(s_modal_btn_pin, TO_LV_COLOR(p.surface1), LV_PART_MAIN);
     lv_obj_add_event_cb(s_modal_btn_pin, modal_pin_btn_cb, LV_EVENT_CLICKED, nullptr);
     s_modal_lbl_pin = lv_label_create(s_modal_btn_pin);
-    bool isPinned = (settings.getPinnedMac() == dev.mac);
+    bool isPinned = settings.isMacPinned(dev.mac);
     lv_label_set_text(s_modal_lbl_pin, isPinned ? LV_SYMBOL_OK " Unpin" : LV_SYMBOL_SAVE " Pin");
     lv_obj_set_style_text_font(s_modal_lbl_pin, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_center(s_modal_lbl_pin);
@@ -728,10 +764,10 @@ void initUI() {
     lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
     lv_obj_align(s_tracker_lbl_trend, LV_ALIGN_TOP_RIGHT, -30, 126);
 
-    // Action buttons at bottom: Mute / Clear
+    // Action buttons at bottom: Mute / Clear / Cycle Next Favorite
     s_tracker_btn_audio = lv_btn_create(s_tab_tracker);
-    lv_obj_set_size(s_tracker_btn_audio, 80, 30);
-    lv_obj_align(s_tracker_btn_audio, LV_ALIGN_BOTTOM_LEFT, 6, 0);
+    lv_obj_set_size(s_tracker_btn_audio, 75, 30);
+    lv_obj_align(s_tracker_btn_audio, LV_ALIGN_BOTTOM_LEFT, 4, 0);
     lv_obj_set_style_bg_color(s_tracker_btn_audio, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
     lv_obj_add_event_cb(s_tracker_btn_audio, tracker_audio_btn_event_cb, LV_EVENT_CLICKED, nullptr);
     s_tracker_lbl_audio = lv_label_create(s_tracker_btn_audio);
@@ -740,14 +776,24 @@ void initUI() {
     lv_obj_center(s_tracker_lbl_audio);
 
     s_tracker_btn_clear = lv_btn_create(s_tab_tracker);
-    lv_obj_set_size(s_tracker_btn_clear, 70, 30);
-    lv_obj_align(s_tracker_btn_clear, LV_ALIGN_BOTTOM_LEFT, 92, 0);
+    lv_obj_set_size(s_tracker_btn_clear, 65, 30);
+    lv_obj_align(s_tracker_btn_clear, LV_ALIGN_BOTTOM_LEFT, 83, 0);
     lv_obj_set_style_bg_color(s_tracker_btn_clear, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
     lv_obj_add_event_cb(s_tracker_btn_clear, tracker_clear_btn_event_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_t* lbl_clear = lv_label_create(s_tracker_btn_clear);
     lv_label_set_text(lbl_clear, LV_SYMBOL_TRASH " Clear");
     lv_obj_set_style_text_font(lbl_clear, &lv_font_montserrat_10, LV_PART_MAIN);
     lv_obj_center(lbl_clear);
+
+    s_tracker_btn_cycle = lv_btn_create(s_tab_tracker);
+    lv_obj_set_size(s_tracker_btn_cycle, 65, 30);
+    lv_obj_align(s_tracker_btn_cycle, LV_ALIGN_BOTTOM_LEFT, 152, 0);
+    lv_obj_set_style_bg_color(s_tracker_btn_cycle, TO_LV_COLOR(p.surface0), LV_PART_MAIN);
+    lv_obj_add_event_cb(s_tracker_btn_cycle, tracker_cycle_btn_event_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_t* lbl_cycle = lv_label_create(s_tracker_btn_cycle);
+    lv_label_set_text(lbl_cycle, LV_SYMBOL_REFRESH " Next");
+    lv_obj_set_style_text_font(lbl_cycle, &lv_font_montserrat_10, LV_PART_MAIN);
+    lv_obj_center(lbl_cycle);
 
     s_tracker_lbl_stats = lv_label_create(s_tab_tracker);
     lv_label_set_text(s_tracker_lbl_stats, "Devices: 0");
@@ -1015,77 +1061,92 @@ void updateUI() {
     const auto& p = getCatppuccinFlavor(getCurrentThemeFlavor());
 
     // Update Tracker Tab
-    const BleDevice* target = bleTracker.getTrackedDevice();
-    if (target) {
-        std::string targetTitle = target->name;
-        const char* tv = target->getVendor();
-        if ((targetTitle.empty() || targetTitle == "Unknown") && strcmp(tv, "Unknown Vendor") != 0) {
-            targetTitle = std::string(tv) + " (Unknown)";
-        }
-        lv_label_set_text(s_tracker_lbl_title, targetTitle.c_str());
-        char detBuf[64];
-        float dist = target->getEstimatedDistance();
-        if (dist > 0.0f) {
-            snprintf(detBuf, sizeof(detBuf), "%s | ~%.1fm", target->mac.c_str(), dist);
+    if (bleTracker.isTracking()) {
+        const BleDevice* target = bleTracker.getTrackedDevice();
+        if (target) {
+            std::string targetTitle = target->name;
+            const char* tv = target->getVendor();
+            if ((targetTitle.empty() || targetTitle == "Unknown") && strcmp(tv, "Unknown Vendor") != 0) {
+                targetTitle = std::string(tv) + " (Unknown)";
+            }
+            lv_label_set_text(s_tracker_lbl_title, targetTitle.c_str());
+            char detBuf[64];
+            float dist = target->getEstimatedDistance();
+            if (dist > 0.0f) {
+                snprintf(detBuf, sizeof(detBuf), "%s | ~%.1fm", target->mac.c_str(), dist);
+            } else {
+                snprintf(detBuf, sizeof(detBuf), "%s", target->mac.c_str());
+            }
+            lv_label_set_text(s_tracker_lbl_details, detBuf);
+
+            int8_t rssi = target->rssi;
+            int q = (int)((float)(rssi - RSSI_FLOOR) / (float)(RSSI_CEILING - RSSI_FLOOR) * 100.0f);
+            if (q < 0) q = 0; if (q > 100) q = 100;
+
+            lv_arc_set_value(s_tracker_arc, q);
+            lv_color_t zoneColor = getZoneLvColor(rssi, getCurrentThemeFlavor());
+            lv_obj_set_style_arc_color(s_tracker_arc, zoneColor, LV_PART_INDICATOR);
+
+            char rBuf[32];
+            snprintf(rBuf, sizeof(rBuf), "%d dBm", (int)rssi);
+            lv_label_set_text(s_tracker_lbl_rssi, rBuf);
+            lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
+
+            if (rssi >= RSSI_ZONE_IMMEDIATE) {
+                lv_label_set_text(s_tracker_lbl_proximity, "IMMEDIATE");
+                led.setState(LedManager::STATE_CLEAN);
+            } else if (rssi >= RSSI_ZONE_NEAR) {
+                lv_label_set_text(s_tracker_lbl_proximity, "NEAR");
+                led.setState(LedManager::STATE_CONGESTED_YELLOW);
+            } else if (rssi >= RSSI_ZONE_MID) {
+                lv_label_set_text(s_tracker_lbl_proximity, "MID-RANGE");
+                led.setState(LedManager::STATE_PULSE_YELLOW);
+            } else {
+                lv_label_set_text(s_tracker_lbl_proximity, "FAR / WEAK");
+                led.setState(LedManager::STATE_CONGESTED_RED);
+            }
+            lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
+
+            // Update history chart
+            int8_t hist[8];
+            bleTracker.getRssiHistory(hist, 8);
+            for (int i = 0; i < 8; ++i) {
+                s_tracker_ser->y_points[i] = (lv_coord_t)hist[i];
+            }
+            lv_chart_refresh(s_tracker_chart);
+
+            // Update proximity trend indicator
+            switch (bleTracker.getTrend()) {
+                case TREND_CLOSING:
+                    lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_UP " CLOSING IN");
+                    lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.green), LV_PART_MAIN);
+                    break;
+                case TREND_DRIFTING:
+                    lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_DOWN " DRIFTING");
+                    lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.red), LV_PART_MAIN);
+                    break;
+                default:
+                    lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " STABLE");
+                    lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
+                    break;
+            }
+
+            // Update audio beeper
+            audio.setTargetRssi(rssi);
         } else {
-            snprintf(detBuf, sizeof(detBuf), "%s", target->mac.c_str());
+            // Target tracked but out of range
+            std::string mac = bleTracker.getTrackedTarget();
+            lv_label_set_text(s_tracker_lbl_title, "Searching Target...");
+            lv_label_set_text(s_tracker_lbl_details, mac.c_str());
+            lv_arc_set_value(s_tracker_arc, 0);
+            lv_label_set_text(s_tracker_lbl_rssi, "-- dBm");
+            lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
+            lv_label_set_text(s_tracker_lbl_proximity, "OUT OF RANGE");
+            lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
+            lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " SEARCHING");
+            lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.blue), LV_PART_MAIN);
+            audio.clearTarget();
         }
-        lv_label_set_text(s_tracker_lbl_details, detBuf);
-
-        int8_t rssi = target->rssi;
-        int q = (int)((float)(rssi - RSSI_FLOOR) / (float)(RSSI_CEILING - RSSI_FLOOR) * 100.0f);
-        if (q < 0) q = 0; if (q > 100) q = 100;
-
-        lv_arc_set_value(s_tracker_arc, q);
-        lv_color_t zoneColor = getZoneLvColor(rssi, getCurrentThemeFlavor());
-        lv_obj_set_style_arc_color(s_tracker_arc, zoneColor, LV_PART_INDICATOR);
-
-        char rBuf[32];
-        snprintf(rBuf, sizeof(rBuf), "%d dBm", (int)rssi);
-        lv_label_set_text(s_tracker_lbl_rssi, rBuf);
-        lv_obj_align_to(s_tracker_lbl_rssi, s_tracker_arc, LV_ALIGN_CENTER, 0, -8);
-
-        if (rssi >= RSSI_ZONE_IMMEDIATE) {
-            lv_label_set_text(s_tracker_lbl_proximity, "IMMEDIATE");
-            led.setState(LedManager::STATE_CLEAN);
-        } else if (rssi >= RSSI_ZONE_NEAR) {
-            lv_label_set_text(s_tracker_lbl_proximity, "NEAR");
-            led.setState(LedManager::STATE_CONGESTED_YELLOW);
-        } else if (rssi >= RSSI_ZONE_MID) {
-            lv_label_set_text(s_tracker_lbl_proximity, "MID-RANGE");
-            led.setState(LedManager::STATE_PULSE_YELLOW);
-        } else {
-            lv_label_set_text(s_tracker_lbl_proximity, "FAR / WEAK");
-            led.setState(LedManager::STATE_CONGESTED_RED);
-        }
-        lv_obj_align_to(s_tracker_lbl_proximity, s_tracker_arc, LV_ALIGN_CENTER, 0, 14);
-
-        // Update history chart
-        int8_t hist[8];
-        bleTracker.getRssiHistory(hist, 8);
-        for (int i = 0; i < 8; ++i) {
-            s_tracker_ser->y_points[i] = (lv_coord_t)hist[i];
-        }
-        lv_chart_refresh(s_tracker_chart);
-
-        // Update proximity trend indicator
-        switch (bleTracker.getTrend()) {
-            case TREND_CLOSING:
-                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_UP " CLOSING IN");
-                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.green), LV_PART_MAIN);
-                break;
-            case TREND_DRIFTING:
-                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_DOWN " DRIFTING");
-                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.red), LV_PART_MAIN);
-                break;
-            default:
-                lv_label_set_text(s_tracker_lbl_trend, LV_SYMBOL_MINUS " STABLE");
-                lv_obj_set_style_text_color(s_tracker_lbl_trend, TO_LV_COLOR(p.yellow), LV_PART_MAIN);
-                break;
-        }
-
-        // Update audio beeper
-        audio.setTargetRssi(rssi);
     } else {
         lv_label_set_text(s_tracker_lbl_title, "No Target Selected");
         lv_label_set_text(s_tracker_lbl_details, "Select a device in Devices tab");

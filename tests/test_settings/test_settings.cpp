@@ -29,6 +29,8 @@ void test_settings_initial_defaults(void) {
     TEST_ASSERT_EQUAL(DEFAULT_DEVICE_SORT_MODE, sm.getDeviceSortMode());
     TEST_ASSERT_EQUAL(DEFAULT_DEVICE_FILTER_MODE, sm.getDeviceFilterMode());
     TEST_ASSERT_EQUAL_STRING("", sm.getPinnedMac().c_str());
+    TEST_ASSERT_EQUAL(0, sm.getPinnedCount());
+    TEST_ASSERT_TRUE(sm.getPinnedMacs().empty());
 }
 
 void test_settings_setters_and_persistence(void) {
@@ -116,6 +118,78 @@ void test_settings_setters_and_persistence(void) {
     TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", rebooted.getPinnedMac().c_str());
 }
 
+void test_settings_multi_pinned_favorites(void) {
+    Preferences prefs;
+    prefs.begin("ble_tracker", false);
+    prefs.clear();
+    prefs.end();
+
+    SettingsManager sm;
+    sm.begin();
+
+    TEST_ASSERT_FALSE(sm.isMacPinned(""));
+    TEST_ASSERT_FALSE(sm.isMacPinned("00:11:22:33:44:55"));
+
+    // Add first device
+    TEST_ASSERT_TRUE(sm.addPinnedMac("00:11:22:33:44:01"));
+    TEST_ASSERT_TRUE(sm.isMacPinned("00:11:22:33:44:01"));
+    TEST_ASSERT_EQUAL(1, sm.getPinnedCount());
+    TEST_ASSERT_EQUAL_STRING("00:11:22:33:44:01", sm.getPinnedMac().c_str());
+
+    // Duplicate add should return false
+    TEST_ASSERT_FALSE(sm.addPinnedMac("00:11:22:33:44:01"));
+    TEST_ASSERT_EQUAL(1, sm.getPinnedCount());
+
+    // Empty add should return false
+    TEST_ASSERT_FALSE(sm.addPinnedMac(""));
+
+    // Add up to MAX_PINNED_DEVICES (8)
+    for (int i = 2; i <= 8; i++) {
+        char mac[32];
+        snprintf(mac, sizeof(mac), "00:11:22:33:44:%02d", i);
+        TEST_ASSERT_TRUE(sm.addPinnedMac(mac));
+    }
+    TEST_ASSERT_EQUAL(8, sm.getPinnedCount());
+
+    // 9th device must be rejected due to capacity limit
+    TEST_ASSERT_FALSE(sm.addPinnedMac("00:11:22:33:44:09"));
+    TEST_ASSERT_EQUAL(8, sm.getPinnedCount());
+
+    // Remove a device
+    TEST_ASSERT_TRUE(sm.removePinnedMac("00:11:22:33:44:01"));
+    TEST_ASSERT_FALSE(sm.isMacPinned("00:11:22:33:44:01"));
+    TEST_ASSERT_EQUAL(7, sm.getPinnedCount());
+    TEST_ASSERT_EQUAL_STRING("00:11:22:33:44:02", sm.getPinnedMac().c_str());
+
+    // Remove non-existent device returns false
+    TEST_ASSERT_FALSE(sm.removePinnedMac("FF:FF:FF:FF:FF:FF"));
+    TEST_ASSERT_FALSE(sm.removePinnedMac(""));
+
+    // Toggle pinned device
+    // Pinned -> Unpin
+    TEST_ASSERT_TRUE(sm.togglePinnedMac("00:11:22:33:44:02"));
+    TEST_ASSERT_FALSE(sm.isMacPinned("00:11:22:33:44:02"));
+    TEST_ASSERT_EQUAL(6, sm.getPinnedCount());
+
+    // Unpinned -> Pin
+    TEST_ASSERT_TRUE(sm.togglePinnedMac("00:11:22:33:44:02"));
+    TEST_ASSERT_TRUE(sm.isMacPinned("00:11:22:33:44:02"));
+    TEST_ASSERT_EQUAL(7, sm.getPinnedCount());
+
+    // Simulated reboot persistence of multi-pinned list
+    SettingsManager rebooted;
+    rebooted.begin();
+    TEST_ASSERT_EQUAL(7, rebooted.getPinnedCount());
+    TEST_ASSERT_TRUE(rebooted.isMacPinned("00:11:22:33:44:02"));
+    TEST_ASSERT_TRUE(rebooted.isMacPinned("00:11:22:33:44:08"));
+    TEST_ASSERT_FALSE(rebooted.isMacPinned("00:11:22:33:44:01"));
+
+    // Clear all pinned
+    rebooted.clearPinnedMacs();
+    TEST_ASSERT_EQUAL(0, rebooted.getPinnedCount());
+    TEST_ASSERT_EQUAL_STRING("", rebooted.getPinnedMac().c_str());
+}
+
 void test_settings_reset_to_defaults(void) {
     SettingsManager sm;
     sm.setThemeFlavor(CATPPUCCIN_FRAPPE);
@@ -123,7 +197,10 @@ void test_settings_reset_to_defaults(void) {
     sm.setAutoBrightness(true);
     sm.setMinRssi(-60);
     sm.setAudioGeiger(false);
-    sm.setPinnedMac("11:22:33:44:55:66");
+    sm.addPinnedMac("11:22:33:44:55:66");
+    sm.addPinnedMac("22:33:44:55:66:77");
+
+    TEST_ASSERT_EQUAL(2, sm.getPinnedCount());
 
     sm.resetToDefaults();
 
@@ -133,18 +210,21 @@ void test_settings_reset_to_defaults(void) {
     TEST_ASSERT_EQUAL(DEFAULT_MIN_RSSI, sm.getMinRssi());
     TEST_ASSERT_TRUE(sm.getAudioGeiger());
     TEST_ASSERT_EQUAL_STRING("", sm.getPinnedMac().c_str());
+    TEST_ASSERT_EQUAL(0, sm.getPinnedCount());
 
     SettingsManager rebooted;
     rebooted.begin();
     TEST_ASSERT_EQUAL(DEFAULT_THEME_FLAVOR, rebooted.getThemeFlavor());
     TEST_ASSERT_EQUAL(100, rebooted.getBrightness());
     TEST_ASSERT_EQUAL_STRING("", rebooted.getPinnedMac().c_str());
+    TEST_ASSERT_EQUAL(0, rebooted.getPinnedCount());
 }
 
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_settings_initial_defaults);
     RUN_TEST(test_settings_setters_and_persistence);
+    RUN_TEST(test_settings_multi_pinned_favorites);
     RUN_TEST(test_settings_reset_to_defaults);
     return UNITY_END();
 }

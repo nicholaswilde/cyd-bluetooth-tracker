@@ -80,6 +80,9 @@ public:
     size_t getDiscoveredCount() const { return _devices.size(); }
     bool isScanning() const { return _isScanning; }
 
+    // Favorites management
+    void updatePinnedDevices();
+
     // Mock helper for tests
     void addOrUpdateDevice(const BleDevice& dev);
     void clearDevices();

@@ -139,7 +139,7 @@ void BluetoothTracker::processFoundDevice(const std::string& mac, const std::str
         type = DEVICE_TYPE_FAST_PAIR;
     }
 
-    bool isPinned = (mac == settings.getPinnedMac());
+    bool isPinned = settings.isMacPinned(mac);
 
     // Update existing device or append new one
     bool found = false;
@@ -351,6 +351,20 @@ void BluetoothTracker::addOrUpdateDevice(const BleDevice& dev) {
             }
             break;
         }
+    }
+}
+
+void BluetoothTracker::updatePinnedDevices() {
+    bool changed = false;
+    for (auto& d : _devices) {
+        bool shouldPin = settings.isMacPinned(d.mac);
+        if (d.isPinned != shouldPin) {
+            d.isPinned = shouldPin;
+            changed = true;
+        }
+    }
+    if (changed) {
+        _catalogVersion++;
     }
 }
 

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 #include "config/config.h"
 
 #ifdef NATIVE_TEST
@@ -52,12 +53,24 @@ public:
     int getDeviceFilterMode() const { return _deviceFilterMode; }
     void setDeviceFilterMode(int mode);
 
-    std::string getPinnedMac() const { return _pinnedMac; }
+    // Multi-device favorites / pinning
+    const std::vector<std::string>& getPinnedMacs() const { return _pinnedMacs; }
+    bool isMacPinned(const std::string& mac) const;
+    bool addPinnedMac(const std::string& mac);
+    bool removePinnedMac(const std::string& mac);
+    bool togglePinnedMac(const std::string& mac);
+    void clearPinnedMacs();
+    size_t getPinnedCount() const { return _pinnedMacs.size(); }
+
+    // Legacy single-target compatibility
+    std::string getPinnedMac() const;
     void setPinnedMac(const std::string& mac);
 
     void resetToDefaults();
 
 private:
+    void savePinnedMacs();
+
     int _themeFlavor;
     int _brightness;
     bool _autoBrightness;
@@ -70,7 +83,7 @@ private:
     int _ledBrightness;
     int _deviceSortMode;
     int _deviceFilterMode;
-    std::string _pinnedMac;
+    std::vector<std::string> _pinnedMacs;
 };
 
 extern SettingsManager settings;

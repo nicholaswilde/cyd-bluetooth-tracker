@@ -1,4 +1,6 @@
 #include "settings_manager.h"
+#include <sstream>
+#include <algorithm>
 #ifndef NATIVE_TEST
 #include <Preferences.h>
 #else
@@ -20,7 +22,7 @@ SettingsManager::SettingsManager()
       _ledBrightness(DEFAULT_LED_BRIGHTNESS),
       _deviceSortMode(DEFAULT_DEVICE_SORT_MODE),
       _deviceFilterMode(DEFAULT_DEVICE_FILTER_MODE),
-      _pinnedMac("") {}
+      _pinnedMacs() {}
 
 void SettingsManager::begin() {
     Preferences prefs;
@@ -37,8 +39,28 @@ void SettingsManager::begin() {
         _ledBrightness = prefs.getInt("led_bright", DEFAULT_LED_BRIGHTNESS);
         _deviceSortMode = prefs.getInt("dev_sort", DEFAULT_DEVICE_SORT_MODE);
         _deviceFilterMode = prefs.getInt("dev_filter", DEFAULT_DEVICE_FILTER_MODE);
-        String mac = prefs.getString("pinned_mac", "");
-        _pinnedMac = mac.c_str();
+
+        _pinnedMacs.clear();
+        String macs = prefs.getString("pinned_macs", "");
+        if (macs.length() == 0) {
+            String legacy = prefs.getString("pinned_mac", "");
+            if (legacy.length() > 0) {
+                _pinnedMacs.push_back(legacy.c_str());
+            }
+        } else {
+            std::string s = macs.c_str();
+            std::stringstream ss(s);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+                size_t first = item.find_first_not_of(" \t\r\n");
+                if (first == std::string::npos) continue;
+                size_t last = item.find_last_not_of(" \t\r\n");
+                std::string trimmed = item.substr(first, (last - first + 1));
+                if (!trimmed.empty() && _pinnedMacs.size() < MAX_PINNED_DEVICES) {
+                    _pinnedMacs.push_back(trimmed);
+                }
+            }
+        }
         prefs.end();
     }
 }
@@ -164,11 +186,70 @@ void SettingsManager::setDeviceFilterMode(int mode) {
     }
 }
 
+bool SettingsManager::isMacPinned(const std::string& mac) const {
+    if (mac.empty()) return false;
+    for (const auto& m : _pinnedMacs) {
+        if (m == mac) return true;
+    }
+    return false;
+}
+
+bool SettingsManager::addPinnedMac(const std::string& mac) {
+    if (mac.empty()) return false;
+    if (isMacPinned(mac)) return false;
+    if (_pinnedMacs.size() >= MAX_PINNED_DEVICES) return false;
+    _pinnedMacs.push_back(mac);
+    savePinnedMacs();
+    return true;
+}
+
+bool SettingsManager::removePinnedMac(const std::string& mac) {
+    if (mac.empty()) return false;
+    for (auto it = _pinnedMacs.begin(); it != _pinnedMacs.end(); ++it) {
+        if (*it == mac) {
+            _pinnedMacs.erase(it);
+            savePinnedMacs();
+            return true;
+        }
+    }
+    return false;
+}
+
+bool SettingsManager::togglePinnedMac(const std::string& mac) {
+    if (isMacPinned(mac)) {
+        return removePinnedMac(mac);
+    } else {
+        return addPinnedMac(mac);
+    }
+}
+
+void SettingsManager::clearPinnedMacs() {
+    _pinnedMacs.clear();
+    savePinnedMacs();
+}
+
+std::string SettingsManager::getPinnedMac() const {
+    return _pinnedMacs.empty() ? "" : _pinnedMacs[0];
+}
+
 void SettingsManager::setPinnedMac(const std::string& mac) {
-    _pinnedMac = mac;
+    _pinnedMacs.clear();
+    if (!mac.empty()) {
+        _pinnedMacs.push_back(mac);
+    }
+    savePinnedMacs();
+}
+
+void SettingsManager::savePinnedMacs() {
     Preferences prefs;
     if (prefs.begin("ble_tracker", false)) {
-        prefs.putString("pinned_mac", _pinnedMac.c_str());
+        std::string joined = "";
+        for (size_t i = 0; i < _pinnedMacs.size(); ++i) {
+            if (i > 0) joined += ",";
+            joined += _pinnedMacs[i];
+        }
+        prefs.putString("pinned_macs", joined.c_str());
+        prefs.putString("pinned_mac", getPinnedMac().c_str());
         prefs.end();
     }
 }
@@ -186,7 +267,7 @@ void SettingsManager::resetToDefaults() {
     _ledBrightness = DEFAULT_LED_BRIGHTNESS;
     _deviceSortMode = DEFAULT_DEVICE_SORT_MODE;
     _deviceFilterMode = DEFAULT_DEVICE_FILTER_MODE;
-    _pinnedMac = "";
+    clearPinnedMacs();
 
     Preferences prefs;
     if (prefs.begin("ble_tracker", false)) {

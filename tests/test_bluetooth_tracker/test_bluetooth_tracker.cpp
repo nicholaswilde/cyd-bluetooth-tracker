@@ -399,6 +399,42 @@ void test_ble_device_get_vendor_fallbacks(void) {
     TEST_ASSERT_EQUAL_STRING("Apple", d2.getVendor());
 }
 
+void test_tracker_multi_device_pinning(void) {
+    bleTracker.clearDevices();
+    settings.clearPinnedMacs();
+
+    // Add 3 devices
+    BleDevice d1; d1.mac = "10:00:00:00:00:01"; d1.name = "Dev1"; d1.rssi = -60; d1.lastSeen = 1000;
+    BleDevice d2; d2.mac = "10:00:00:00:00:02"; d2.name = "Dev2"; d2.rssi = -70; d2.lastSeen = 1000;
+    BleDevice d3; d3.mac = "10:00:00:00:00:03"; d3.name = "Dev3"; d3.rssi = -80; d3.lastSeen = 1000;
+
+    bleTracker.addOrUpdateDevice(d1);
+    bleTracker.addOrUpdateDevice(d2);
+    bleTracker.addOrUpdateDevice(d3);
+
+    // None pinned initially
+    auto pinnedOnly = bleTracker.getFilteredDevices(0, 2, -95);
+    TEST_ASSERT_EQUAL(0, pinnedOnly.size());
+
+    // Pin Dev1 and Dev3
+    settings.addPinnedMac("10:00:00:00:00:01");
+    settings.addPinnedMac("10:00:00:00:00:03");
+    bleTracker.updatePinnedDevices();
+
+    pinnedOnly = bleTracker.getFilteredDevices(0, 2, -95);
+    TEST_ASSERT_EQUAL(2, pinnedOnly.size());
+
+    // Unpin Dev1
+    settings.removePinnedMac("10:00:00:00:00:01");
+    bleTracker.updatePinnedDevices();
+
+    pinnedOnly = bleTracker.getFilteredDevices(0, 2, -95);
+    TEST_ASSERT_EQUAL(1, pinnedOnly.size());
+    TEST_ASSERT_EQUAL_STRING("10:00:00:00:00:03", pinnedOnly[0].mac.c_str());
+
+    settings.clearPinnedMacs();
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_tracker_add_and_get_devices);
@@ -418,5 +454,6 @@ int main(void) {
     RUN_TEST(test_tracker_rssi_history_and_slope_edge_cases);
     RUN_TEST(test_tracker_add_or_update_existing_and_vendor_override);
     RUN_TEST(test_ble_device_get_vendor_fallbacks);
+    RUN_TEST(test_tracker_multi_device_pinning);
     return UNITY_END();
 }

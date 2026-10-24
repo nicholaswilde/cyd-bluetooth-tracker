@@ -48,6 +48,7 @@
 // Device Catalog Sort & Filter Defaults
 #define DEFAULT_DEVICE_SORT_MODE 0    // 0: RSSI (Strongest), 1: Name (A-Z), 2: Last Seen
 #define DEFAULT_DEVICE_FILTER_MODE 0  // 0: All, 1: Named Only, 2: Pinned Only
+#define MAX_PINNED_DEVICES 8
 
 // Hardware Pins
 #define LDR_PIN 34
