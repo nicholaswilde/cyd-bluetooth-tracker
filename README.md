@@ -107,6 +107,9 @@ Alternatively, you can flash the device directly from your terminal using the pr
 # Flash the default cyd_28r (2.8" resistive ILI9341 320x240 screen)
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28r /dev/ttyUSB0
 
+# Or flash inverted colors variant if display colors appear inverted
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28r_inv /dev/ttyUSB0
+
 # Or flash the cyd_28c version (2.8" capacitive ST7789 320x240 screen)
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/nicholaswilde/cyd-bluetooth-tracker/main/scripts/flash.sh)" _ cyd_28c /dev/ttyUSB0
 
